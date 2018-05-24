@@ -75,7 +75,7 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
                     Id = message.FunctionId
                 },
                 Arguments = message.Arguments,
-                ParentId = message.ParentId,
+                ParentActivity = message.ParentActivity,
                 Reason = message.Reason,
                 StartTime = startAndEndTime,
                 EndTime = startAndEndTime,
@@ -110,7 +110,7 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
             var context = new FunctionInstanceFactoryContext
             {
                 Id = message.Id,
-                ParentId = message.ParentId,
+                ParentActivity = message.ParentActivity,
                 ExecutionReason = message.Reason,
                 Parameters = objectParameters
             };

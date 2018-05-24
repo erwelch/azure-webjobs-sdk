@@ -24,7 +24,10 @@ namespace Microsoft.Azure.WebJobs.Host.Loggers
         public Guid FunctionInstanceId { get; set; }
 
         /// <summary>The parent instance that caused this function instance to run. this is used to establish causality between functions. </summary>
+        [Obsolete("Use ParentActivity instead.")]
         public Guid? ParentId { get; set; }
+
+        public Activity ParentActivity { get; set; }
 
         /// <summary>The name of the function, including the class name. This serves as an identifier.</summary>
         public string FunctionName { get; set; }

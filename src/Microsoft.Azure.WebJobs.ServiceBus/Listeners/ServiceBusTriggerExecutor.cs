@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs.Host.Executors;
@@ -21,9 +22,16 @@ namespace Microsoft.Azure.WebJobs.ServiceBus.Listeners
         public async Task<FunctionResult> ExecuteAsync(Message value, CancellationToken cancellationToken)
         {
             Guid? parentId = ServiceBusCausalityHelper.GetOwner(value);
+
+            if (parentId != null && Activity.Current != null)
+            {
+                // ServiceBus process activity
+                Activity.Current.AddTag("$AzureWebJobsParentId", parentId.ToString());
+            }
+
             TriggeredFunctionData input = new TriggeredFunctionData
             {
-                ParentId = parentId,
+                // ParentActivity is current, no need to pass it explicitly
                 TriggerValue = value
             };
             return await _innerExecutor.TryExecuteAsync(input, cancellationToken);

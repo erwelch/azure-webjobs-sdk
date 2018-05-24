@@ -214,8 +214,14 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
                         functionCancellationTokenSource.Token,
                         instance.FunctionDescriptor);
                     var valueBindingContext = new ValueBindingContext(functionContext, cancellationToken);
-                    await parameterHelper.BindAsync(instance.BindingSource, valueBindingContext);
 
+                    using (logger.BeginScope(new Dictionary<string, object>
+                    {
+                        [LogConstants.CategoryNameKey] = "Host.Bindings.Input"
+                    }))
+                    {
+                        await parameterHelper.BindAsync(instance.BindingSource, valueBindingContext);
+                    }
                     Exception invocationException = null;
                     ExceptionDispatchInfo exceptionInfo = null;
                     string startedMessageId = null;
@@ -480,8 +486,15 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
 
                     invoker = FunctionInvocationFilterInvoker.Create(invoker, filters, instance, parameterHelper, logger);
 
-                    await InvokeAsync(invoker, parameterHelper, timeoutTokenSource, functionCancellationTokenSource,
-                        throwOnTimeout, timerInterval, instance);
+                    using (logger.BeginScope(new Dictionary<string, object>
+                    {
+                        [LogConstants.CategoryNameKey] =
+                            LogCategories.CreateFunctionCategory(instance.FunctionDescriptor.LogName)
+                    }))
+                    {
+                        await InvokeAsync(invoker, parameterHelper, timeoutTokenSource, functionCancellationTokenSource,
+                            throwOnTimeout, timerInterval, instance);
+                    }
                 }
                 finally
                 {
@@ -493,7 +506,13 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
                 }
             }
 
-            await parameterHelper.ProcessOutputParameters(functionCancellationTokenSource.Token);
+            using (logger.BeginScope(new Dictionary<string, object>
+            {
+                [LogConstants.CategoryNameKey] = "Host.Bindings.Output"
+            }))
+            {
+                await parameterHelper.ProcessOutputParameters(functionCancellationTokenSource.Token);
+            }
 
             if (singleton != null)
             {
@@ -624,7 +643,7 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
                 WebJobRunIdentifier = _hostOutputMessage.WebJobRunIdentifier,
                 FunctionInstanceId = instance.Id,
                 Function = instance.FunctionDescriptor,
-                ParentId = instance.ParentId,
+                ParentActivity = instance.ParentActivity,
                 Reason = instance.Reason,
                 StartTime = DateTimeOffset.UtcNow
             };
@@ -653,7 +672,7 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
                 FunctionInstanceId = startedMessage.FunctionInstanceId,
                 Function = startedMessage.Function,
                 Arguments = startedMessage.Arguments,
-                ParentId = startedMessage.ParentId,
+                ParentActivity = startedMessage.ParentActivity,
                 Reason = startedMessage.Reason,
                 ReasonDetails = startedMessage.FormatReason(),
                 StartTime = startedMessage.StartTime,
@@ -668,7 +687,7 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
             FunctionInstanceLogEntry fastItem = new FunctionInstanceLogEntry
             {
                 FunctionInstanceId = functionStartedMessage.FunctionInstanceId,
-                ParentId = functionStartedMessage.ParentId,
+                ParentActivity = functionStartedMessage.ParentActivity,
                 FunctionName = functionStartedMessage.Function.ShortName,
                 LogName = functionStartedMessage.Function.LogName,
                 TriggerReason = functionStartedMessage.ReasonDetails,

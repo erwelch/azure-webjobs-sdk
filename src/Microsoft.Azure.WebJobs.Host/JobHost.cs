@@ -329,7 +329,7 @@ namespace Microsoft.Azure.WebJobs
             var context = new FunctionInstanceFactoryContext
             {
                 Id = Guid.NewGuid(),
-                ParentId = null,
+                ParentActivity = null,
                 ExecutionReason = ExecutionReason.HostCall,
                 Parameters = parameters
             };

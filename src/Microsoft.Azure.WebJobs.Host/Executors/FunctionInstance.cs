@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using Microsoft.Azure.WebJobs.Host.Protocols;
 
 namespace Microsoft.Azure.WebJobs.Host.Executors
@@ -9,17 +10,17 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
     internal class FunctionInstance : IFunctionInstance
     {
         private readonly Guid _id;
-        private readonly Guid? _parentId;
+        private readonly Activity _parentActivity;
         private readonly ExecutionReason _reason;
         private readonly IBindingSource _bindingSource;
         private readonly IFunctionInvoker _invoker;
         private readonly FunctionDescriptor _functionDescriptor;
 
-        public FunctionInstance(Guid id, Guid? parentId, ExecutionReason reason, IBindingSource bindingSource,
+        public FunctionInstance(Guid id, Activity parentActivity, ExecutionReason reason, IBindingSource bindingSource,
             IFunctionInvoker invoker, FunctionDescriptor functionDescriptor)
         {
             _id = id;
-            _parentId = parentId;
+            _parentActivity = parentActivity;
             _reason = reason;
             _bindingSource = bindingSource;
             _invoker = invoker;
@@ -31,9 +32,12 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
             get { return _id; }
         }
 
-        public Guid? ParentId
+        [Obsolete("Use ParentActivity instead.")]
+        public Guid? ParentId { get; } = null;
+
+        public Activity ParentActivity
         {
-            get { return _parentId; }
+            get { return _parentActivity; }
         }
 
         public ExecutionReason Reason

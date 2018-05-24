@@ -2,58 +2,139 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.AspNetCore.TelemetryInitializers;
 using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.DataContracts;
+using Microsoft.ApplicationInsights.DependencyCollector;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.ApplicationInsights.Extensibility.Implementation;
 using Microsoft.ApplicationInsights.Extensibility.PerfCounterCollector.QuickPulse;
+using Microsoft.ApplicationInsights.WindowsServer.Channel.Implementation;
 using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel;
-using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel.Implementation;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
 {
-    /// <summary>
-    /// Creates a <see cref="TelemetryClient"/> for use by the <see cref="ApplicationInsightsLogger"/>. 
-    /// </summary>
-    public class DefaultTelemetryClientFactory : ITelemetryClientFactory
+
+    public static class WebJobsHostLoggingExtensions
     {
-        private readonly string _instrumentationKey;
-        private readonly SamplingPercentageEstimatorSettings _samplingSettings;
 
-        private QuickPulseTelemetryModule _quickPulseModule;
-        private TelemetryConfiguration _config;
-        private bool _disposed;
-        private Func<string, LogLevel, bool> _filter;
-
-        /// <summary>
-        /// Instantiates an instance.
-        /// </summary>
-        /// <param name="instrumentationKey">The Application Insights instrumentation key.</param>
-        /// <param name="samplingSettings">The <see cref="SamplingPercentageEstimatorSettings"/> to use for configuring adaptive sampling. If null, sampling is disabled.</param>
-        /// <param name="filter"></param>
-        public DefaultTelemetryClientFactory(string instrumentationKey, SamplingPercentageEstimatorSettings samplingSettings, Func<string, LogLevel, bool> filter)
+        public static IHostBuilder ConfigureApplicationInsights(this IHostBuilder builder)
         {
-            _instrumentationKey = instrumentationKey;
-            _samplingSettings = samplingSettings;
-            _filter = filter;
-        }
+            string instrumentationKey = Environment.GetEnvironmentVariable("APPINSIGHTS_INSTRUMENTATIONKEY");
 
-        /// <summary>
-        /// Creates a <see cref="TelemetryClient"/>. 
-        /// </summary>
-        /// <returns>The <see cref="TelemetryClient"/> instance.</returns>
-        public virtual TelemetryClient Create()
-        {
-            _config = InitializeConfiguration();
+            if (!string.IsNullOrEmpty(instrumentationKey))
+            {
+                var filter = new LogCategoryFilter
+                {
+                    DefaultLevel = LogLevel.Debug
+                };
 
-            TelemetryClient client = new TelemetryClient(_config);
+                filter.CategoryLevels[LogCategories.Results] = LogLevel.Debug;
+                filter.CategoryLevels[LogCategories.Aggregator] = LogLevel.Debug;
 
-            string assemblyVersion = GetAssemblyFileVersion(typeof(JobHost).Assembly);
-            client.Context.GetInternalContext().SdkVersion = $"webjobs: {assemblyVersion}";
+                SamplingPercentageEstimatorSettings samplingSettings = new SamplingPercentageEstimatorSettings();
 
-            return client;
+                builder.ConfigureServices((context, services) =>
+                {
+                    //services.AddSingleton<ITelemetryInitializer, Microsoft.ApplicationInsights.AspNetCore.TelemetryInitializers.OperationCorrelationTelemetryInitializer>();
+                    //services.AddSingleton<ITelemetryInitializer, AspNetCoreEnvironmentTelemetryInitializer>();
+                    services.AddSingleton<ITelemetryInitializer, HttpDependenciesParsingTelemetryInitializer>();
+                    services.AddSingleton<ITelemetryInitializer, WebJobsRoleEnvironmentTelemetryInitializer>();
+                    services.AddSingleton<ITelemetryInitializer, WebJobsTelemetryInitializer>();
+                    services.AddSingleton<ITelemetryInitializer, WebJobsSanitizingInitializer>();
+                    services.AddSingleton<ITelemetryInitializer, ActivityTagsTelemetryIntitializer>();
+                    services.AddSingleton<ITelemetryInitializer, MyTelemetryInitializer>();
+                    services.AddSingleton<ITelemetryModule, QuickPulseTelemetryModule>();
+                    services.AddSingleton<ITelemetryModule, DependencyTrackingTelemetryModule>(provider =>
+                    {
+                        var dependencyCollector = new DependencyTrackingTelemetryModule();
+                        var excludedDomains = dependencyCollector.ExcludeComponentCorrelationHttpHeadersOnDomains;
+                        excludedDomains.Add("core.windows.net");
+                        excludedDomains.Add("core.chinacloudapi.cn");
+                        excludedDomains.Add("core.cloudapi.de");
+                        excludedDomains.Add("core.usgovcloudapi.net");
+                        excludedDomains.Add("localhost");
+                        excludedDomains.Add("127.0.0.1");
+
+                        var includedActivities = dependencyCollector.IncludeDiagnosticSourceActivities;
+                        includedActivities.Add("Microsoft.Azure.EventHubs");
+                        includedActivities.Add("Microsoft.Azure.ServiceBus");
+
+                        return dependencyCollector;
+                    });
+
+                    //heartbeat
+                    //services.AddSingleton<IApplicationInsightDiagnosticListener, HostingDiagnosticListener>();
+
+                    services.AddSingleton<TelemetryConfiguration>(provider =>
+                    {
+                        TelemetryConfiguration config = TelemetryConfiguration.CreateDefault();
+                        config.InstrumentationKey = instrumentationKey;
+
+                        ITelemetryChannel channel = new ServerTelemetryChannel();
+                        ((ITelemetryModule) channel)?.Initialize(config);
+                        config.TelemetryChannel = channel;
+
+                        foreach (ITelemetryInitializer initializer in provider.GetServices<ITelemetryInitializer>())
+                        {
+                            config.TelemetryInitializers.Add(initializer);
+                        }
+
+                        foreach (ITelemetryModule module in provider.GetServices<ITelemetryModule>())
+                        {
+                            module.Initialize(config);
+                        }
+
+                        QuickPulseTelemetryModule quickPulseModule = (QuickPulseTelemetryModule)provider.GetServices<ITelemetryModule>().SingleOrDefault(m => m is QuickPulseTelemetryModule);
+                        if (quickPulseModule != null)
+                        {
+                            config.TelemetryProcessorChainBuilder
+                                .Use((next) =>
+                                {
+                                    QuickPulseTelemetryProcessor processor = new QuickPulseTelemetryProcessor(next);
+                                    quickPulseModule.RegisterTelemetryProcessor(processor);
+                                    return processor;
+                                });
+                        }
+
+                        config.TelemetryProcessorChainBuilder.Use((next) => new FilteringTelemetryProcessor(filter.Filter, next));
+
+
+                        if (samplingSettings != null)
+                        {
+                            config.TelemetryProcessorChainBuilder.Use((next) =>
+                                new AdaptiveSamplingTelemetryProcessor(samplingSettings, null, next));
+                        }
+
+                        config.TelemetryProcessorChainBuilder.Build();
+
+                        return config;
+                    });
+                    services.AddSingleton<TelemetryClient>(provider =>
+                    {
+                        TelemetryConfiguration configuration = provider.GetService<TelemetryConfiguration>();
+
+                        TelemetryClient client = new TelemetryClient(configuration);
+
+                        string assemblyVersion = GetAssemblyFileVersion(typeof(JobHost).Assembly);
+                        client.Context.GetInternalContext().SdkVersion = $"webjobs: {assemblyVersion}";
+
+                        return client;
+                    });
+
+                    services.AddSingleton<ILoggerProvider, ApplicationInsightsLoggerProvider>();
+                });
+            }
+
+            return builder;
         }
 
         internal static string GetAssemblyFileVersion(Assembly assembly)
@@ -61,111 +142,99 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             AssemblyFileVersionAttribute fileVersionAttr = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
             return fileVersionAttr?.Version ?? LoggingConstants.Unknown;
         }
+    }
 
-        internal TelemetryConfiguration InitializeConfiguration()
+    class ActivityTagsTelemetryIntitializer : ITelemetryInitializer
+    {
+        private const string OperationContext = "MS_OperationContext";
+        private const string DateTimeFormatString = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'.'fffK";
+        private static readonly string[] SystemScopeKeys =
         {
-            TelemetryConfiguration config = new TelemetryConfiguration()
+            LogConstants.CategoryNameKey,
+            LogConstants.LogLevelKey,
+            LogConstants.OriginalFormatKey,
+            ScopeKeys.Event,
+            ScopeKeys.FunctionInvocationId,
+            ScopeKeys.FunctionName,
+            ScopeKeys.HostInstanceId,
+            OperationContext
+        };
+
+        public void Initialize(ITelemetry telemetry)
+        {
+            var currentActivity = Activity.Current;
+            if (currentActivity != null)
             {
-                InstrumentationKey = _instrumentationKey
-            };
-
-            AddInitializers(config);
-
-            // Plug in Live stream and adaptive sampling
-            QuickPulseTelemetryProcessor processor = null;
-            TelemetryProcessorChainBuilder builder = config.TelemetryProcessorChainBuilder
-                .Use((next) =>
+                foreach (var tag in currentActivity.Tags)
                 {
-                    processor = new QuickPulseTelemetryProcessor(next);
-                    return processor;
-                })
-                .Use((next) =>
-                {
-                    return new FilteringTelemetryProcessor(_filter, next);
-                });
-
-            if (_samplingSettings != null)
-            {
-                builder.Use((next) =>
-                {
-                    return new AdaptiveSamplingTelemetryProcessor(_samplingSettings, null, next);
-                });
+                    if (!telemetry.Context.Properties.ContainsKey(tag.Key))
+                    {
+                        telemetry.Context.Properties.Add(tag);
+                    }
+                }
             }
 
-            builder.Build();
-
-            _quickPulseModule = CreateQuickPulseTelemetryModule();
-            _quickPulseModule.Initialize(config);
-            _quickPulseModule.RegisterTelemetryProcessor(processor);
-
-            // Configure the TelemetryChannel
-            ITelemetryChannel channel = CreateTelemetryChannel();
-
-            // call Initialize if available
-            if (channel is ITelemetryModule module)
+            if (/*!(telemetry is MetricTelemetry)TODO &&*/ telemetry is ISupportProperties propTelemetry)
             {
-                module.Initialize(config);
+                var scopeProperties = DictionaryLoggerScope.GetMergedStateDictionary()
+                    .Where(p => !SystemScopeKeys.Contains(p.Key, StringComparer.Ordinal));
+                ApplyProperties(propTelemetry, scopeProperties, LogConstants.CustomPropertyPrefix);
+            }
+        }
+
+        // Inserts properties into the telemetry's properties. Properly formats dates, removes nulls, applies prefix, etc.
+        private static void ApplyProperties(ISupportProperties telemetry, IEnumerable<KeyValuePair<string, object>> values, string propertyPrefix = null)
+        {
+            foreach (var property in values)
+            {
+                string stringValue = null;
+
+                // drop null properties
+                if (property.Value == null)
+                {
+                    continue;
+                }
+
+                // Format dates
+                Type propertyType = property.Value.GetType();
+                if (propertyType == typeof(DateTime))
+                {
+                    stringValue = ((DateTime)property.Value).ToUniversalTime().ToString(DateTimeFormatString);
+                }
+                else if (propertyType == typeof(DateTimeOffset))
+                {
+                    stringValue = ((DateTimeOffset)property.Value).UtcDateTime.ToString(DateTimeFormatString);
+                }
+                else
+                {
+                    stringValue = property.Value.ToString();
+                }
+
+                telemetry.Properties.Add($"{propertyPrefix}{property.Key}", stringValue);
+            }
+        }
+    }
+
+    class MyTelemetryInitializer : ITelemetryInitializer
+    {
+        public void Initialize(ITelemetry telemetry)
+        {
+            if (telemetry is DependencyTelemetry dep && dep.Data != null)
+            {
+                Debug.WriteLine($"!!!!!! {dep.Data} {string.Join(", ", dep.Properties.Keys)}");
             }
 
-            config.TelemetryChannel = channel;
-
-            return config;
-        }
-
-        /// <summary>
-        /// Creates the <see cref="ITelemetryChannel"/> to be used by the <see cref="TelemetryClient"/>. If this channel
-        /// implements <see cref="ITelemetryModule"/> as well, <see cref="ITelemetryModule.Initialize(TelemetryConfiguration)"/> will
-        /// automatically be called.
-        /// </summary>
-        /// <returns>The <see cref="ITelemetryChannel"/></returns>
-        protected virtual ITelemetryChannel CreateTelemetryChannel()
-        {
-            return new ServerTelemetryChannel();
-        }
-
-        /// <summary>
-        /// Creates the <see cref="QuickPulseTelemetryModule"/> to be used by the <see cref="TelemetryClient"/>.
-        /// </summary>
-        /// <returns>The <see cref="QuickPulseTelemetryModule"/>.</returns>
-        protected virtual QuickPulseTelemetryModule CreateQuickPulseTelemetryModule()
-        {
-            return new QuickPulseTelemetryModule();
-        }
-
-        internal static void AddInitializers(TelemetryConfiguration config)
-        {
-            // This picks up the RoleName from the server
-            config.TelemetryInitializers.Add(new WebJobsRoleEnvironmentTelemetryInitializer());
-
-            // This applies our special scope properties and gets RoleInstance name
-            config.TelemetryInitializers.Add(new WebJobsTelemetryInitializer());
-
-            // This removes any well-known connection strings from logs
-            config.TelemetryInitializers.Add(new WebJobsSanitizingInitializer());
-        }
-
-        /// <inheritdoc />
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
-        /// Disposes the instance.
-        /// </summary>
-        /// <param name="disposing"></param>
-        protected virtual void Dispose(bool disposing)
-        {
-            if (disposing && !_disposed)
+            if (DictionaryLoggerScope.Current != null)
             {
-                // TelemetryConfiguration.Dispose will dispose the Channel and the TelemetryProcessors
-                // registered with the TelemetryProcessorChainBuilder.
-                _config?.Dispose();
+                if (DictionaryLoggerScope.Current.State.ContainsKey(LogConstants.CategoryNameKey))
+                {
+                    telemetry.Context.Properties[LogConstants.CategoryNameKey] = DictionaryLoggerScope.Current.State[LogConstants.CategoryNameKey].ToString();
+                }
 
-                _quickPulseModule?.Dispose();
-
-                _disposed = true;
+                if (DictionaryLoggerScope.Current.State.ContainsKey(LogConstants.LogLevelKey))
+                {
+                    telemetry.Context.Properties[LogConstants.LogLevelKey] = DictionaryLoggerScope.Current.State[LogConstants.LogLevelKey].ToString();
+                }
             }
         }
     }

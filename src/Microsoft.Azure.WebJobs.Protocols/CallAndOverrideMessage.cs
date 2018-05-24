@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 #if PUBLICPROTOCOL
 namespace Microsoft.Azure.WebJobs.Protocols
@@ -31,6 +32,10 @@ namespace Microsoft.Azure.WebJobs.Host.Protocols
         public ExecutionReason Reason { get; set; }
 
         /// <summary>Gets or sets the ID of the parent function, if any.</summary>
+        [Obsolete("Use ParentActivity instead.")]
         public Guid? ParentId { get; set; }
+
+
+        public Activity ParentActivity { get; set; }
     }
 }

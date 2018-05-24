@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using Microsoft.Azure.WebJobs.Host.Protocols;
 
 namespace Microsoft.Azure.WebJobs.Host.Executors
@@ -10,7 +11,10 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
     {
         Guid Id { get; }
 
+        [Obsolete("Use ParentActivity instead.")]
         Guid? ParentId { get; }
+
+        Activity ParentActivity { get; }
 
         ExecutionReason Reason { get; }
 

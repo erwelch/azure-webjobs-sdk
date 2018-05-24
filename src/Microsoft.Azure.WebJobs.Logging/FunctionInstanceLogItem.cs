@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 
 namespace Microsoft.Azure.WebJobs.Logging
@@ -26,7 +27,10 @@ namespace Microsoft.Azure.WebJobs.Logging
         public Guid FunctionInstanceId { get; set; }
 
         /// <summary>Gets or sets the Function ID of the ancestor function instance.</summary>
+        [Obsolete("Use ParentActivity instead.")]
         public Guid? ParentId { get; set; }
+
+        public Activity ParentActivity { get; set; }
 
         /// <summary>Short Name of this function.</summary>
         public string FunctionName { get; set; }

@@ -27,6 +27,13 @@
     <ProjectReference Include="..\..\src\Microsoft.Azure.WebJobs.Host.Storage\WebJobs.Host.Storage.csproj" />
     <ProjectReference Include="..\..\src\Microsoft.Azure.WebJobs.Host\WebJobs.Host.csproj" />
     <ProjectReference Include="..\..\src\Microsoft.Azure.WebJobs.Logging.ApplicationInsights\WebJobs.Logging.ApplicationInsights.csproj" />
+    <ProjectReference Include="..\..\src\Microsoft.Azure.WebJobs.ServiceBus\WebJobs.ServiceBus.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="index.js">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   
 

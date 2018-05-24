@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace Microsoft.Azure.WebJobs.Host.Executors
@@ -14,7 +15,13 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
         /// <summary>
         /// The parent ID for the triggered function invocation.
         /// </summary>
+        [Obsolete("Use ParentActivity instead.")]
         public Guid? ParentId { get; set; }
+
+        /// <summary>
+        /// The trace context for correlation.
+        /// </summary>
+        public Activity ParentActivity { get; set; }
 
         /// <summary>
         /// The trigger value for a specific triggered function invocation.

@@ -5,6 +5,7 @@ using System;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.ApplicationInsights.Extensibility.Implementation;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
@@ -32,15 +33,17 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
         {
             bool enabled = true;
 
-            ISupportProperties telemetry = item as ISupportProperties;
-
-            if (telemetry != null && _filter != null)
+            if (item is ISupportProperties telemetry && _filter != null)
             {
                 string categoryName = null;
                 if (!telemetry.Properties.TryGetValue(LogConstants.CategoryNameKey, out categoryName))
                 {
                     // If no category is specified, it will be filtered by the default filter
                     categoryName = string.Empty;
+                    if (item is OperationTelemetry)
+                    {
+                        enabled = false;
+                    }
                 }
 
                 // Extract the log level and apply the filter

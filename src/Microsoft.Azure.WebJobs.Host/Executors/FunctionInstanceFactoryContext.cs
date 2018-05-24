@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs.Host.Protocols;
 
@@ -11,7 +12,10 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
     public class FunctionInstanceFactoryContext
     {
         public Guid Id { get; set; }
+
+        [Obsolete("Use ParentActivity instead")]
         public Guid? ParentId { get; set; }
+        public Activity ParentActivity { get; set; }
         public ExecutionReason ExecutionReason { get; set; }
         public IDictionary<string, object> Parameters { get; set; }
         public Func<Func<Task<object>>, Task<object>> InvokeHandler { get; set; }

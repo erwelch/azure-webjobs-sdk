@@ -5,6 +5,7 @@ using Microsoft.WindowsAzure.Storage.Table;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace Microsoft.Azure.WebJobs.Logging
@@ -32,7 +33,7 @@ namespace Microsoft.Azure.WebJobs.Logging
                 PartitionKey = PartitionKeyFormat,
                 RowKey = RowKeyFunctionInstanceId(item.FunctionInstanceId),
 
-                ParentId = item.ParentId,
+                ParentActivity = item.ParentActivity,
                 FunctionName = item.FunctionName,
                 TriggerReason = item.TriggerReason,
                 StartTime = item.StartTime,
@@ -51,7 +52,7 @@ namespace Microsoft.Azure.WebJobs.Logging
             return new FunctionInstanceLogItem
             {
                 FunctionInstanceId = ((IFunctionInstanceBaseEntry) this).FunctionInstanceId,
-                ParentId = this.ParentId,
+                ParentActivity = this.ParentActivity,
                 FunctionName = this.FunctionName,
                 TriggerReason = this.TriggerReason,
                 StartTime = this.StartTime,
@@ -116,7 +117,22 @@ namespace Microsoft.Azure.WebJobs.Logging
             return JsonConvert.DeserializeObject<IDictionary<string, string>>(this.ArgumentsJson);
         }
 
-        public Guid? ParentId { get; private set; }
+        //        [Obsolete("Use ParentActivity instead.")]
+        public string ParentId
+        {
+            get => ParentActivity?.ParentId;
+            set
+            {
+                if (ParentActivity == null)
+                {
+                    ParentActivity = new Activity("dummy");
+                    ParentActivity.SetParentId(value);
+                }
+            }
+        }
+
+        [IgnoreProperty]
+        public Activity ParentActivity { get; private set; }
 
         Guid IFunctionInstanceBaseEntry.FunctionInstanceId
         {

@@ -2,7 +2,10 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
-using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel.Implementation;
+using System.Linq;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.WindowsServer.Channel.Implementation;
+using Microsoft.Azure.WebJobs.Logging;
 using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
 
 namespace Microsoft.Extensions.Logging
@@ -15,32 +18,12 @@ namespace Microsoft.Extensions.Logging
         /// <summary>
         /// Registers an <see cref="ApplicationInsightsLoggerProvider"/> with an <see cref="ILoggerFactory"/>.
         /// </summary>
-        /// <param name="loggerFactory">The factory.</param>
-        /// <param name="instrumentationKey">The Application Insights instrumentation key.</param>
-        /// <param name="filter">A filter that returns true if a message with the specified <see cref="LogLevel"/>
-        /// and category should be logged. You can use <see cref="LogCategoryFilter.Filter(string, LogLevel)"/>
-        /// or write a custom filter.</param>
-        /// <returns>A <see cref="ILoggerFactory"/> for chaining additional operations.</returns>
-        public static ILoggerFactory AddApplicationInsights(
-            this ILoggerFactory loggerFactory,
-            string instrumentationKey,
-            Func<string, LogLevel, bool> filter)
-        {
-            ITelemetryClientFactory defaultFactory = new DefaultTelemetryClientFactory(instrumentationKey,
-                new SamplingPercentageEstimatorSettings(), filter);
-
-            return AddApplicationInsights(loggerFactory, defaultFactory);
-        }
-
-        /// <summary>
-        /// Registers an <see cref="ApplicationInsightsLoggerProvider"/> with an <see cref="ILoggerFactory"/>.
-        /// </summary>
         /// <param name="loggerFactory">The factory.</param>        
         /// <param name="telemetryClientFactory">The factory to use when creating the <see cref="TelemetryClient"/> </param>
         /// <returns>A <see cref="ILoggerFactory"/> for chaining additional operations.</returns>
-        public static ILoggerFactory AddApplicationInsights(
+        public static ILoggerFactory AddApplicationInsightsLogger(
             this ILoggerFactory loggerFactory,
-            ITelemetryClientFactory telemetryClientFactory)
+            TelemetryClient telemetryClient)
         {
             if (loggerFactory == null)
             {
@@ -48,14 +31,20 @@ namespace Microsoft.Extensions.Logging
             }
 
             // Note: LoggerFactory calls Dispose() on all registered providers.
-            loggerFactory.AddProvider(new ApplicationInsightsLoggerProvider(telemetryClientFactory));
+            loggerFactory.AddProvider(new ApplicationInsightsLoggerProvider(telemetryClient));
 
             return loggerFactory;
         }
 
-        public static ILoggingBuilder AddApplicationInsights(this ILoggingBuilder builder, ITelemetryClientFactory telemetryClientFactory)
+        public static ILoggingBuilder AddApplicationInsightsLogger(this ILoggingBuilder builder)
         {
-            return builder.AddProvider(new ApplicationInsightsLoggerProvider(telemetryClientFactory));
+            var telemetryClient = (TelemetryClient)builder.Services.SingleOrDefault(s => s.ServiceType == typeof(TelemetryClient))?.ImplementationInstance;
+            if (telemetryClient != null)
+            {
+                return builder.AddProvider(new ApplicationInsightsLoggerProvider(telemetryClient));
+            }
+
+            return builder;
         }
     }
 }

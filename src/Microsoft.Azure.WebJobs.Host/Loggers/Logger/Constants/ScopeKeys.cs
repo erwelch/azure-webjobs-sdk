@@ -27,5 +27,7 @@ namespace Microsoft.Azure.WebJobs.Logging
         /// A key identifying the current host instance.
         /// </summary>
         public const string HostInstanceId = "MS_HostInstanceId";
+
+        public const string FunctionParentActivity = "MS_FunctionParentActivity";
     }
 }

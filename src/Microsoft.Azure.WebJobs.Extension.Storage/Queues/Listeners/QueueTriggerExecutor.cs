@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs.Host.Executors;
@@ -22,9 +23,14 @@ namespace Microsoft.Azure.WebJobs.Host.Queues.Listeners
         public async Task<FunctionResult> ExecuteAsync(CloudQueueMessage value, CancellationToken cancellationToken)
         {
             Guid? parentId = QueueCausalityManager.GetOwner(value);
+            Activity activity = new Activity("BlobQueueTriggerExecutor");
+            if (parentId != null)
+            {
+                activity.SetParentId(parentId.ToString());
+            }
             TriggeredFunctionData input = new TriggeredFunctionData
             {
-                ParentId = parentId,
+                ParentActivity = activity,
                 TriggerValue = value
             };
             return await _innerExecutor.TryExecuteAsync(input, cancellationToken);

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using Newtonsoft.Json;
 
 #if PUBLICPROTOCOL
 namespace Microsoft.Azure.WebJobs.Protocols
@@ -38,7 +40,20 @@ namespace Microsoft.Azure.WebJobs.Host.Protocols
         public IDictionary<string, string> Arguments { get; set; }
 
         /// <summary>Gets or sets the ID of the ancestor function instance.</summary>
-        public Guid? ParentId { get; set; }
+        public string ParentId
+        {
+            get => ParentActivity?.ParentId;
+            set {
+                if (ParentActivity == null)
+                {
+                    ParentActivity = new Activity("dummy");
+                    ParentActivity.SetParentId(value);
+                }
+            }
+        }
+
+        [JsonIgnore]
+        public Activity ParentActivity { get; set; }
 
         /// <summary>Gets or sets the reason the function executed.</summary>
         public ExecutionReason Reason { get; set; }

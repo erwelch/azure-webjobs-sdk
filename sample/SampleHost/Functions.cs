@@ -2,6 +2,11 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
@@ -13,11 +18,29 @@ namespace SampleHost
     [ErrorHandler]
     public static class Functions
     {
+        public static HttpClient hc = new HttpClient();
         [Singleton]
-        public static void BlobTrigger(
+        public static async Task BlobTrigger(
             [BlobTrigger("test")] string blob, ILogger logger)
         {
+            await hc.GetAsync("http://microsoft.com");
             logger.LogInformation("Processed blob: " + blob);
+        }
+
+        [FunctionName("ServiceBusTrigger")]
+        //[return: Blob("output-container/{id}")]
+        public static void ProcessQueueMessage(
+            [ServiceBusTrigger("test")] string message,
+            [Blob("test/aaa.md", FileAccess.Read)] Stream myBlob,
+            [Blob("orders/{MessageId}")] out string orderBlob,
+            TextWriter logger)
+        {
+            using (StreamReader sr = new StreamReader(myBlob))
+            {
+                orderBlob = string.Format("{{ \"id\": \"{0}\" }}", sr.ReadToEnd());
+            }
+            logger.WriteLine($"C# script processed queue message. Item={orderBlob}");
+
         }
 
         public static void BlobPoisonBlobHandler(

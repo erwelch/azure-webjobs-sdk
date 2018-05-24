@@ -3,10 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
-using Microsoft.Extensions.Logging;
 
 namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
 {
@@ -26,21 +26,35 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
 
             telemetry.Context.Cloud.RoleInstance = _roleInstanceName;
 
-            // Zero out all IP addresses other than Requests
-            if (!(telemetry is RequestTelemetry))
-            {
-                telemetry.Context.Location.Ip = LoggingConstants.ZeroIpAddress;
-            }
+            telemetry.Context.Location.Ip = LoggingConstants.ZeroIpAddress;
+
+
 
             // Apply our special scope properties
-            IDictionary<string, object> scopeProps = DictionaryLoggerScope.GetMergedStateDictionary() ?? new Dictionary<string, object>();
+            IDictionary<string, object> scopeProps = null;
+            if (Activity.Current != null)
+            {
+                // TODO: multiple tags with the same name
+                scopeProps = new Dictionary<string, object>();
+                foreach (var tag in Activity.Current.Tags)
+                {
+                    if (!scopeProps.ContainsKey(tag.Key))
+                    {
+                        scopeProps.Add(tag.Key, tag.Value);
+                    }
+                }
+            }
+            else
+            {
+                scopeProps = DictionaryLoggerScope.GetMergedStateDictionary() ?? new Dictionary<string, object>();
+            }
 
-            telemetry.Context.Operation.Id = scopeProps.GetValueOrDefault<string>(ScopeKeys.FunctionInvocationId);
+
+            //telemetry.Context.Operation.Id = scopeProps.GetValueOrDefault<string>(ScopeKeys.FunctionInvocationId);
             telemetry.Context.Operation.Name = scopeProps.GetValueOrDefault<string>(ScopeKeys.FunctionName);
 
             // Apply Category and LogLevel to all telemetry
-            ISupportProperties telemetryProps = telemetry as ISupportProperties;
-            if (telemetryProps != null)
+            if (telemetry is ISupportProperties telemetryProps)
             {
                 string category = scopeProps.GetValueOrDefault<string>(LogConstants.CategoryNameKey);
                 if (category != null)
@@ -48,10 +62,21 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                     telemetryProps.Properties[LogConstants.CategoryNameKey] = category;
                 }
 
-                LogLevel? logLevel = scopeProps.GetValueOrDefault<LogLevel?>(LogConstants.LogLevelKey);
+                object logLevel = scopeProps.GetValueOrDefault<object>(LogConstants.LogLevelKey);
                 if (logLevel != null)
                 {
-                    telemetryProps.Properties[LogConstants.LogLevelKey] = logLevel.Value.ToString();
+                    telemetryProps.Properties[LogConstants.LogLevelKey] = logLevel.ToString();
+                }
+            }
+
+            if (telemetry is RequestTelemetry requestTelemetry)
+            {
+                requestTelemetry.Name = telemetry.Context.Operation.Name;
+                requestTelemetry.ResponseCode = "0";
+                object succeeded = scopeProps.GetValueOrDefault<object>(LogConstants.SucceededKey);
+                if (succeeded != null)
+                {
+                    requestTelemetry.Success = succeeded.ToString() == bool.TrueString;
                 }
             }
         }

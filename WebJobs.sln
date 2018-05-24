@@ -51,6 +51,12 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WebJobs.Host.Storage", "src
 EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "WebJobs.Shared.Storage", "src\Microsoft.Azure.WebJobs.Shared.Storage\WebJobs.Shared.Storage.shproj", "{6BED7F8A-A199-4D9D-85D1-6856EE3292C6}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "js", "js", "{09454EF6-4BE8-408C-BEF0-7DD96E042EAE}"
+	ProjectSection(SolutionItems) = preProject
+		function.json = function.json
+		index.js = index.js
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		src\Microsoft.Azure.WebJobs.Shared.Storage\Microsoft.Azure.WebJobs.Shared.Storage.projitems*{6bed7f8a-a199-4d9d-85d1-6856ee3292c6}*SharedItemsImports = 13

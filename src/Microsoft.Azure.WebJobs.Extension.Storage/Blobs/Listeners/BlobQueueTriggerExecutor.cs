@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs.Host.Executors;
@@ -21,7 +22,7 @@ namespace Microsoft.Azure.WebJobs.Host.Blobs.Listeners
         private readonly IBlobCausalityReader _causalityReader;
         private readonly IBlobWrittenWatcher _blobWrittenWatcher;
         private readonly ConcurrentDictionary<string, BlobQueueRegistration> _registrations;
-
+        private static readonly DiagnosticListener listener = new DiagnosticListener("Microsoft.Azure.WebJobs.Host.Blobs.Listeners.BlobQueueTriggerExecutor");
         public BlobQueueTriggerExecutor(IBlobWrittenWatcher blobWrittenWatcher)
             : this(BlobETagReader.Instance, BlobCausalityReader.Instance, blobWrittenWatcher)
         {
@@ -98,9 +99,15 @@ namespace Microsoft.Azure.WebJobs.Host.Blobs.Listeners
             // If the blob still exists and its ETag is still valid, execute.
             // Note: it's possible the blob could change/be deleted between now and when the function executes.
             Guid? parentId = await _causalityReader.GetWriterAsync(blob, cancellationToken);
+            Activity activity = new Activity("BlobQueueTriggerExecutor");
+            if (parentId != null)
+            {
+                activity.SetParentId(parentId.ToString());
+            }
+
             TriggeredFunctionData input = new TriggeredFunctionData
             {
-                ParentId = parentId,
+                ParentActivity = activity,
                 TriggerValue = blob
             };
 

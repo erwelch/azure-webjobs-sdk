@@ -10,7 +10,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
+using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Options;
+using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
 
 namespace SampleHost
 {
@@ -27,11 +29,13 @@ namespace SampleHost
                     // Example setting options properties:
                     // o.HostId = "testhostid";
                 })
+                .ConfigureApplicationInsights()
                 // These can be toggled independently!
                 .AddWebJobsLogging()    // Enables WebJobs v1 classic logging 
                 .AddStorageForRuntimeInternals() // enables WebJobs to run distributed, via a storage account to coordinate
                 .AddStorageBindings()   // adds [Blob], etc bindings for Azure Storage. 
 
+                
                 .ConfigureAppConfiguration(config =>
                 {
                     // Adding command line as a configuration source
@@ -46,9 +50,10 @@ namespace SampleHost
                 {
                     b.SetMinimumLevel(LogLevel.Debug);
                     b.AddConsole();
-                    b.AddApplicationInsights();
                 })
+                .AddServiceBus()
                 .UseConsoleLifetime();
+
 
             var jobHost = builder.Build();
 

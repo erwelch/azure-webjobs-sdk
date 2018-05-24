@@ -32,6 +32,7 @@ namespace Microsoft.Azure.WebJobs.Host.Blobs
 
             Debug.Assert(!Guid.Equals(Guid.Empty, function));
             
+            //TODO
             metadata[BlobMetadataKeys.ParentId] = function.ToString();
         }
 

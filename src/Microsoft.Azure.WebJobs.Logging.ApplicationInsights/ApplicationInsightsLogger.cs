@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -87,6 +89,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 // Log an aggregate record
                 if (_categoryName == LogCategories.Aggregator)
                 {
+                    /// TODO : custom props
                     LogFunctionResultAggregate(stateValues);
                     return;
                 }
@@ -150,18 +153,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 }
             }
 
-            ApplyCustomScopeProperties(telemetry);
-
             _telemetryClient.TrackMetric(telemetry);
-        }
-
-        // Applies custom scope properties; does not apply 'system' used properties
-        private static void ApplyCustomScopeProperties(ISupportProperties telemetry)
-        {
-            var scopeProperties = DictionaryLoggerScope.GetMergedStateDictionary()
-                .Where(p => !SystemScopeKeys.Contains(p.Key, StringComparer.Ordinal));
-
-            ApplyProperties(telemetry, scopeProperties, LogConstants.CustomPropertyPrefix);
         }
 
         private void LogException(LogLevel logLevel, IEnumerable<KeyValuePair<string, object>> values, Exception exception, string formattedMessage)
@@ -182,7 +174,6 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             }
 
             ApplyProperties(telemetry, values, LogConstants.CustomPropertyPrefix);
-            ApplyCustomScopeProperties(telemetry);
             _telemetryClient.TrackException(telemetry);
         }
 
@@ -194,7 +185,6 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 Timestamp = DateTimeOffset.UtcNow
             };
             ApplyProperties(telemetry, values, LogConstants.CustomPropertyPrefix);
-            ApplyCustomScopeProperties(telemetry);
             _telemetryClient.TrackTrace(telemetry);
         }
 
@@ -229,31 +219,51 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
         {
             foreach (var property in values)
             {
-                string stringValue = null;
-
-                // drop null properties
-                if (property.Value == null)
+                string stringValue = SanitizeValue(property.Value);
+                if (stringValue != null)
                 {
-                    continue;
+                    telemetry.Properties.Add($"{propertyPrefix}{property.Key}", stringValue);
                 }
-
-                // Format dates
-                Type propertyType = property.Value.GetType();
-                if (propertyType == typeof(DateTime))
-                {
-                    stringValue = ((DateTime)property.Value).ToUniversalTime().ToString(DateTimeFormatString);
-                }
-                else if (propertyType == typeof(DateTimeOffset))
-                {
-                    stringValue = ((DateTimeOffset)property.Value).UtcDateTime.ToString(DateTimeFormatString);
-                }
-                else
-                {
-                    stringValue = property.Value.ToString();
-                }
-
-                telemetry.Properties.Add($"{propertyPrefix}{property.Key}", stringValue);
             }
+        }
+
+        // Inserts properties into the telemetry's properties. Properly formats dates, removes nulls, applies prefix, etc.
+        private static void SetTag(Activity currentActivity, KeyValuePair<string, object> property, string propertyPrefix = null)
+        {
+            string stringValue = SanitizeValue(property.Value);
+            if (stringValue != null)
+            {
+                currentActivity.AddTag($"{propertyPrefix}{property.Key}", stringValue);
+            }
+        }
+
+        // Inserts properties into the telemetry's properties. Properly formats dates, removes nulls, applies prefix, etc.
+        private static string SanitizeValue(object value)
+        {
+            string stringValue = null;
+
+            // drop null properties
+            if (value == null)
+            {
+                return null;
+            }
+
+            // Format dates
+            Type propertyType = value.GetType();
+            if (propertyType == typeof(DateTime))
+            {
+                stringValue = ((DateTime)value).ToUniversalTime().ToString(DateTimeFormatString);
+            }
+            else if (propertyType == typeof(DateTimeOffset))
+            {
+                stringValue = ((DateTimeOffset)value).UtcDateTime.ToString(DateTimeFormatString);
+            }
+            else
+            {
+                stringValue = value.ToString();
+            }
+
+            return stringValue;
         }
 
         private void LogFunctionResultAggregate(IEnumerable<KeyValuePair<string, object>> values)
@@ -301,35 +311,46 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
         {
             IDictionary<string, object> scopeProps = DictionaryLoggerScope.GetMergedStateDictionary() ?? new Dictionary<string, object>();
 
-            RequestTelemetry requestTelemetry = scopeProps.GetValueOrDefault<RequestTelemetry>(OperationContext);
-
-            // We somehow never started the operation, so there's no way to complete it.
-            if (requestTelemetry == null)
-            {
-                throw new InvalidOperationException("No started telemetry was found.");
-            }
-
-            requestTelemetry.Success = exception == null;
-            requestTelemetry.ResponseCode = "0";
-
-            // Set ip address to zeroes. If we find HttpRequest details below, we will update this
-            requestTelemetry.Context.Location.Ip = LoggingConstants.ZeroIpAddress;
-
-            ApplyFunctionResultProperties(requestTelemetry, values);
-
             // log associated exception details
             if (exception != null)
             {
                 LogException(logLevel, values, exception, null);
             }
 
+            SetFunctionResultTags(values);
+            var current = Activity.Current;
+            if (current != null)
+            {
+                Debug.WriteLine($"???????????? {Activity.Current.Id} {string.Join(", ", scopeProps.Select(kvp => kvp.Key + "=" + kvp.Value))}");
+                foreach (var pair in scopeProps)
+                {
+                    SetTag(current, pair);
+                }
+            }
+
+            IOperationHolder<RequestTelemetry> requestOperation = scopeProps.GetValueOrDefault<IOperationHolder<RequestTelemetry>>(OperationContext);
+            // We somehow never started the operation, so there's no way to complete it.
+            if (requestOperation == null)
+            {
+                // function result is tracked automatically
+                return;
+                //throw new InvalidOperationException("No started telemetry was found.");
+            }
+
+            RequestTelemetry requestTelemetry = requestOperation.Telemetry;
+            Debug.WriteLine("got Request " + string.Join(", ", requestTelemetry.Properties.Select(kvp => $"{kvp.Key} = {kvp.Value}")));
+            Debug.WriteLine("    state " + string.Join(", ", values.Select(kvp => $"{kvp.Key} = {kvp.Value}")));
+            Debug.WriteLine("    scopeProps " + string.Join(", ", scopeProps.Select(kvp => $"{kvp.Key} = {kvp.Value}")));
+
             // Note: we do not have to set Duration, StartTime, etc. These are handled by the call to Stop()
-            requestTelemetry.Stop();
-            _telemetryClient.TrackRequest(requestTelemetry);
+            _telemetryClient.StopOperation(requestOperation);
         }
 
-        private static void ApplyFunctionResultProperties(RequestTelemetry requestTelemetry, IEnumerable<KeyValuePair<string, object>> stateValues)
+        private static void SetFunctionResultTags(IEnumerable<KeyValuePair<string, object>> stateValues)
         {
+            Activity current = Activity.Current;
+            
+            Debug.Assert(current != null);
             // Build up the telemetry model. Some values special and go right on the telemetry object. All others
             // are added to the Properties bag.
             foreach (KeyValuePair<string, object> prop in stateValues)
@@ -346,7 +367,8 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                     default:
                         // There should be no custom properties here, so just copy
                         // the passed-in values without any 'prop__' prefix.
-                        ApplyProperty(requestTelemetry, prop);
+
+                        SetTag(current, prop);
                         break;
                 }
             }
@@ -366,12 +388,13 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 throw new ArgumentNullException(nameof(state));
             }
 
-            StartTelemetryIfFunctionInvocation(state as IDictionary<string, object>);
+            var dictState = state as IDictionary<string,object>;
+            StartTelemetryIfFunctionInvocation(dictState);
 
             return DictionaryLoggerScope.Push(state);
         }
 
-        private static void StartTelemetryIfFunctionInvocation(IDictionary<string, object> stateValues)
+        private void StartTelemetryIfFunctionInvocation(IDictionary<string, object> stateValues)
         {
             if (stateValues == null)
             {
@@ -381,60 +404,22 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             string functionName = stateValues.GetValueOrDefault<string>(ScopeKeys.FunctionName);
             string functionInvocationId = stateValues.GetValueOrDefault<string>(ScopeKeys.FunctionInvocationId);
             string eventName = stateValues.GetValueOrDefault<string>(ScopeKeys.Event);
-
+            Activity parentActivity = stateValues.GetValueOrDefault<Activity>(ScopeKeys.FunctionParentActivity);
             // If we have the invocation id, function name, and event, we know it's a new function. That means
             // that we want to start a new operation and let App Insights track it for us.
             if (!string.IsNullOrEmpty(functionName) &&
                 !string.IsNullOrEmpty(functionInvocationId) &&
                 eventName == LogConstants.FunctionStartEvent)
             {
-                RequestTelemetry request = new RequestTelemetry()
+                if (parentActivity != null && parentActivity != Activity.Current)
                 {
-                    Id = functionInvocationId,
-                    Name = functionName
-                };
-
-                // We'll need to store this operation context so we can stop it when the function completes
-                request.Start();
-                stateValues[OperationContext] = request;
-            }
-        }
-
-        internal static string GetIpAddress(HttpRequest httpRequest)
-        {
-            // first check for X-Forwarded-For; used by load balancers
-            if (httpRequest.Headers?.TryGetValue(ApplicationInsightsScopeKeys.ForwardedForHeaderName, out StringValues headerValues) ?? false)
-            {
-                string ip = headerValues.FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(ip))
+                    stateValues[OperationContext] = _telemetryClient.StartOperation<RequestTelemetry>(parentActivity);
+                }
+                else if (Activity.Current == null)
                 {
-                    return RemovePort(ip);
+                    stateValues[OperationContext] = _telemetryClient.StartOperation(new RequestTelemetry());
                 }
             }
-
-            return httpRequest.HttpContext?.Connection.RemoteIpAddress.ToString() ?? LoggingConstants.ZeroIpAddress;
-        }
-
-        private static string RemovePort(string address)
-        {
-            // For Web sites in Azure header contains ip address with port e.g. 50.47.87.223:54464
-            int portSeparatorIndex = address.IndexOf(":", StringComparison.OrdinalIgnoreCase);
-
-            if (portSeparatorIndex > 0)
-            {
-                return address.Substring(0, portSeparatorIndex);
-            }
-
-            return address;
-        }
-
-        internal static ObjectResult GetResponse(HttpRequest httpRequest)
-        {
-            // Grab the response stored by functions
-            object value = null;
-            httpRequest.HttpContext?.Items?.TryGetValue(ApplicationInsightsScopeKeys.FunctionsHttpResponse, out value);
-
-            return value as ObjectResult;
         }
     }
 }

@@ -151,10 +151,12 @@ namespace Microsoft.Azure.WebJobs.ServiceBus
                         }
                         else
                         {
+                            var message = value.GetSingleEventTriggerInput(i);
+                            var activity = message.Events.SingleOrDefault()?.ExtractActivity();
                             TriggeredFunctionData input = new TriggeredFunctionData
                             {
-                                ParentId = null,
-                                TriggerValue = value.GetSingleEventTriggerInput(i)
+                                ParentActivity = activity,
+                                TriggerValue = message
                             };
                             Task task = _parent._executor.TryExecuteAsync(input, _cts.Token);
                             dispatches.Add(task);
@@ -169,6 +171,7 @@ namespace Microsoft.Azure.WebJobs.ServiceBus
                 }
                 else
                 {
+                    //TODO
                     // Batch dispatch
                     TriggeredFunctionData input = new TriggeredFunctionData
                     {

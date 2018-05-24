@@ -77,6 +77,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="4.5.0" />
     <PackageReference Include="WindowsAzure.Storage" Version="8.6.0" />
   </ItemGroup>
 

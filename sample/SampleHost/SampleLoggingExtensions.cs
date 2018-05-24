@@ -2,32 +2,22 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using Microsoft.ApplicationInsights.AspNetCore.TelemetryInitializers;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.DependencyCollector;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.Azure.WebJobs.Logging;
 using Microsoft.Extensions.Logging;
-using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel.Implementation;
+using Microsoft.ApplicationInsights.WindowsServer.Channel.Implementation;
+using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel;
+using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace SampleHost
 {
     public static class SampleLoggingExtensions
     {
-        public static void AddApplicationInsights(this ILoggingBuilder builder)
-        {
-            // If AppInsights is enabled, build up a LoggerFactory
-            string instrumentationKey = Environment.GetEnvironmentVariable("APPINSIGHTS_INSTRUMENTATIONKEY");
-            if (!string.IsNullOrEmpty(instrumentationKey))
-            {
-                var filter = new LogCategoryFilter
-                {
-                    DefaultLevel = LogLevel.Debug
-                };
-
-                filter.CategoryLevels[LogCategories.Results] = LogLevel.Debug;
-                filter.CategoryLevels[LogCategories.Aggregator] = LogLevel.Debug;
-
-                ITelemetryClientFactory defaultFactory = new DefaultTelemetryClientFactory(instrumentationKey, new SamplingPercentageEstimatorSettings(), filter.Filter);
-                builder.AddProvider(new ApplicationInsightsLoggerProvider(defaultFactory));
-            }
-        }
     }
 }
