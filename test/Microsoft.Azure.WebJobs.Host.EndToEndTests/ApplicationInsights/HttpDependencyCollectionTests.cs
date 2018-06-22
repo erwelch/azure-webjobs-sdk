@@ -374,6 +374,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
                         o.IsEnabled = false;
                     });
                 })
+                .AddAzureStorage()
                 .AddApplicationInsights(_mockApplicationInsightsKey, filter.Filter, null)
                 .Build();
 

@@ -98,7 +98,6 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 Assert.IsType<AdaptiveSamplingTelemetryProcessor>(config.TelemetryProcessors[2]);
 
                 Assert.Equal(samplingSettings.MaxTelemetryItemsPerSecond, ((AdaptiveSamplingTelemetryProcessor)config.TelemetryProcessors[2]).MaxTelemetryItemsPerSecond);
-
             }
         }
     }

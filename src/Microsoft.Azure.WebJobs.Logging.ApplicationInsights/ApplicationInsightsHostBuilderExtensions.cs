@@ -3,17 +3,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.DependencyCollector;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.ApplicationInsights.Extensibility.Implementation;
+using Microsoft.ApplicationInsights.Extensibility.Implementation.ApplicationId;
 using Microsoft.ApplicationInsights.Extensibility.PerfCounterCollector.QuickPulse;
 using Microsoft.ApplicationInsights.WindowsServer.Channel.Implementation;
 using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Logging;
 using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -46,12 +44,14 @@ namespace Microsoft.Extensions.Logging
         /// and category should be logged. You can use <see cref="LogCategoryFilter.Filter(string, LogLevel)"/>
         /// or write a custom filter.</param>
         /// <param name="samplingSettings">The <see cref="SamplingPercentageEstimatorSettings"/> to use for configuring adaptive sampling. If null, sampling is disabled.</param>
+        /// <param name="enableResponseHeaderBackPropagation">Enables propagation of headers in response for multi-tenant ApplicationInsights scenarios.</param>
         /// <returns>A <see cref="IHostBuilder"/> for chaining additional operations.</returns>
         public static IHostBuilder AddApplicationInsights(
             this IHostBuilder builder, 
             string instrumentationKey,
             Func<string, LogLevel, bool> filter,
-            SamplingPercentageEstimatorSettings samplingSettings)
+            SamplingPercentageEstimatorSettings samplingSettings,
+            bool enableResponseHeaderBackPropagation = true)
         {
             if (string.IsNullOrEmpty(instrumentationKey))
             {
@@ -64,6 +64,9 @@ namespace Microsoft.Extensions.Logging
                 services.AddSingleton<ITelemetryInitializer, WebJobsRoleEnvironmentTelemetryInitializer>();
                 services.AddSingleton<ITelemetryInitializer, WebJobsTelemetryInitializer>();
                 services.AddSingleton<ITelemetryInitializer, WebJobsSanitizingInitializer>();
+
+                // TODO: add ClientIpHeaderTelemetryInitializer from AspNetCore SDK
+
                 services.AddSingleton<ITelemetryModule, QuickPulseTelemetryModule>();
                 services.AddSingleton<ITelemetryModule, DependencyTrackingTelemetryModule>(provider =>
                 {
@@ -79,8 +82,16 @@ namespace Microsoft.Extensions.Logging
                     return dependencyCollector;
                 });
 
+                services.AddSingleton<IApplicationIdProvider, ApplicationInsightsApplicationIdProvider>();
+                services.AddSingleton<ITelemetryModule, RequestTrackingTelemetryModule>(provider =>
+                {
+                    IApplicationIdProvider appIdProvider = provider.GetService<IApplicationIdProvider>();
+                    return new RequestTrackingTelemetryModule(appIdProvider, enableResponseHeaderBackPropagation);
+                });
+
                 ServerTelemetryChannel serverChannel = new ServerTelemetryChannel();
                 services.AddSingleton<ITelemetryChannel>(serverChannel);
+
                 services.AddSingleton<TelemetryConfiguration>(provider =>
                 {
                     ITelemetryChannel channel = provider.GetService<ITelemetryChannel>();
@@ -118,8 +129,7 @@ namespace Microsoft.Extensions.Logging
                     TelemetryConfiguration configuration = provider.GetService<TelemetryConfiguration>();
                     TelemetryClient client = new TelemetryClient(configuration);
 
-                    string assemblyVersion = GetAssemblyFileVersion(typeof(JobHost).Assembly);
-                    client.Context.GetInternalContext().SdkVersion = $"webjobs: {assemblyVersion}";
+                    client.Context.GetInternalContext().SdkVersion = LoggingConstants.SdkVersion;
 
                     return client;
                 });
@@ -128,12 +138,6 @@ namespace Microsoft.Extensions.Logging
             });
 
             return builder;
-        }
-
-        internal static string GetAssemblyFileVersion(Assembly assembly)
-        {
-            AssemblyFileVersionAttribute fileVersionAttr = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
-            return fileVersionAttr?.Version ?? LoggingConstants.Unknown;
         }
 
         private static void SetupTelemetryConfiguration(

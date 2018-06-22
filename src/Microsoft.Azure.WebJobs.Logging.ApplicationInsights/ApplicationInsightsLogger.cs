@@ -301,59 +301,72 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             }
         }
 
-        private void LogFunctionResult(IEnumerable<KeyValuePair<string, object>> values, LogLevel logLevel, Exception exception)
+        private void LogFunctionResult(IEnumerable<KeyValuePair<string, object>> state, LogLevel logLevel, Exception exception)
         {
             IDictionary<string, object> scopeProps = DictionaryLoggerScope.GetMergedStateDictionary() ?? new Dictionary<string, object>();
 
+            // log associated exception details
+            KeyValuePair<string, object>[] stateProps = state as KeyValuePair<string, object>[] ?? state.ToArray();
+            if (exception != null)
+            {
+                LogException(logLevel, stateProps, exception, null);
+            }
+
+            ApplyFunctionResultActivityTags(stateProps, scopeProps);
+
             IOperationHolder<RequestTelemetry> requestOperation = scopeProps.GetValueOrDefault<IOperationHolder<RequestTelemetry>>(OperationContext);
 
-            if (requestOperation == null)
+            if (requestOperation != null)
             {
                 // We somehow never started the operation, perhaps, it was auto-tracked by the AI SDK 
                 // so there's no way to complete it.
-                return;
+
+                RequestTelemetry requestTelemetry = requestOperation.Telemetry;
+                requestTelemetry.Success = exception == null;
+                requestTelemetry.ResponseCode = "0";
+
+                // Note: we do not have to set Duration, StartTime, etc. These are handled by the call to Stop()
+                _telemetryClient.StopOperation(requestOperation);
             }
-
-            RequestTelemetry requestTelemetry = requestOperation.Telemetry;
-            requestTelemetry.Success = exception == null;
-            requestTelemetry.ResponseCode = "0";
-
-            // Set ip address to zeroes. If we find HttpRequest details below, we will update this
-            requestTelemetry.Context.Location.Ip = LoggingConstants.ZeroIpAddress;
-
-            ApplyFunctionResultProperties(requestTelemetry, values);
-
-            // log associated exception details
-            if (exception != null)
-            {
-                LogException(logLevel, values, exception, null);
-            }
-
-            // Note: we do not have to set Duration, StartTime, etc. These are handled by the call to Stop()
-            _telemetryClient.StopOperation(requestOperation);
         }
 
-        private static void ApplyFunctionResultProperties(RequestTelemetry requestTelemetry, IEnumerable<KeyValuePair<string, object>> stateValues)
+        private static void ApplyFunctionResultActivityTags(IEnumerable<KeyValuePair<string, object>> state, IDictionary<string, object> scope)
         {
-            // Build up the telemetry model. Some values special and go right on the telemetry object. All others
-            // are added to the Properties bag.
-            foreach (KeyValuePair<string, object> prop in stateValues)
+            Activity currentActivity = Activity.Current;
+
+            // should always be true
+            if (currentActivity != null)
             {
-                switch (prop.Key)
+                foreach (KeyValuePair<string, object> prop in state)
                 {
-                    case LogConstants.NameKey:
-                    case LogConstants.StartTimeKey:
-                    case LogConstants.DurationKey:
-                    case LogConstants.SucceededKey:
-                    case LogConstants.EndTimeKey:
-                        // These values are set by the calls to Start/Stop the telemetry. Other
-                        // Loggers may want them, but we'll ignore.
-                        break;
-                    default:
-                        // There should be no custom properties here, so just copy
-                        // the passed-in values without any 'prop__' prefix.
-                        ApplyProperty(requestTelemetry, prop);
-                        break;
+                    switch (prop.Key)
+                    {
+                        case LogConstants.StartTimeKey:
+                        case LogConstants.SucceededKey:
+                        case LogConstants.EndTimeKey:
+                            // These values are set by the calls to Start/Stop the telemetry. Other
+                            // Loggers may want them, but we'll ignore.
+                            break;
+                        default:
+                            // There should be no custom properties here, so just copy
+                            // the passed-in values without any 'prop__' prefix.
+                            if (prop.Value != null)
+                            {
+                                currentActivity.AddTag(prop.Key, prop.Value.ToString());
+                            }
+
+                            break;
+                    }
+                }
+
+                if (scope.TryGetValue(LogConstants.CategoryNameKey, out object category))
+                {
+                    currentActivity.AddTag(LogConstants.CategoryNameKey, category.ToString());
+                }
+
+                if (scope.TryGetValue(LogConstants.LogLevelKey, out object logLevel))
+                {
+                    currentActivity.AddTag(LogConstants.LogLevelKey, logLevel.ToString());
                 }
             }
         }
@@ -384,24 +397,31 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 return;
             }
 
-            string functionName = stateValues.GetValueOrDefault<string>(ScopeKeys.FunctionName);
-            string functionInvocationId = stateValues.GetValueOrDefault<string>(ScopeKeys.FunctionInvocationId);
-            string eventName = stateValues.GetValueOrDefault<string>(ScopeKeys.Event);
-
-            // If we have the invocation id, function name, and event, we know it's a new function. That means
-            // that we want to start a new operation and let App Insights track it for us.
-            if (!string.IsNullOrEmpty(functionName) &&
-                !string.IsNullOrEmpty(functionInvocationId) &&
-                eventName == LogConstants.FunctionStartEvent)
+            // Http and ServiceBus triggers are tracked automatically by the ApplicationInsights SDK
+            // In such case a current Activity is present.
+            // We won't track and only stamp function specific details on the RequestTelemtery
+            // created by SDK via Activity when function ends
+            if (Activity.Current == null)
             {
-                RequestTelemetry request = new RequestTelemetry()
-                {
-                    Name = functionName
-                };
+                string functionName = stateValues.GetValueOrDefault<string>(ScopeKeys.FunctionName);
+                string functionInvocationId = stateValues.GetValueOrDefault<string>(ScopeKeys.FunctionInvocationId);
+                string eventName = stateValues.GetValueOrDefault<string>(ScopeKeys.Event);
 
-                // We'll need to store this operation context so we can stop it when the function completes
-                IOperationHolder<RequestTelemetry> operation = _telemetryClient.StartOperation(request);
-                stateValues[OperationContext] = operation;
+                // If we have the invocation id, function name, and event, we know it's a new function. That means
+                // that we want to start a new operation and let App Insights track it for us.
+                if (!string.IsNullOrEmpty(functionName) &&
+                    !string.IsNullOrEmpty(functionInvocationId) &&
+                    eventName == LogConstants.FunctionStartEvent)
+                {
+                    RequestTelemetry request = new RequestTelemetry()
+                    {
+                        Name = functionName
+                    };
+
+                    // We'll need to store this operation context so we can stop it when the function completes
+                    IOperationHolder<RequestTelemetry> operation = _telemetryClient.StartOperation(request);
+                    stateValues[OperationContext] = operation;
+                }
             }
         }
 

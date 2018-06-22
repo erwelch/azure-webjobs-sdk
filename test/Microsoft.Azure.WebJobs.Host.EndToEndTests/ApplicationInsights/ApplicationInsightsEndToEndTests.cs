@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -18,7 +19,7 @@ using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.ApplicationInsights.Extensibility.Implementation;
 using Microsoft.ApplicationInsights.Extensibility.PerfCounterCollector.QuickPulse;
-using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.WebJobs.Host.TestCommon;
 using Microsoft.Azure.WebJobs.Logging;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,7 +34,8 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
     {
         private const string _mockApplicationInsightsUrl = "http://localhost:4005/v2/track/";
         private const string _mockQuickPulseUrl = "http://localhost:4005/QuickPulseService.svc/";
-
+        private static readonly Uri _mockUri = new Uri("https://host.com:1234/path?query");
+        private readonly string _someIp = "192.168.0.1";
         private readonly TestTelemetryChannel _channel = new TestTelemetryChannel();
 
         private const string _mockApplicationInsightsKey = "some_key";
@@ -75,6 +77,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 .Build();
 
             SetActiveTelemetryConfiguration(host.Services.GetService<TelemetryConfiguration>());
+
             return host;
         }
 
@@ -271,7 +274,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
         }
 
         [Fact]
-        public async Task ApplicationInsights_HttpTriggerIsTrackedOnce()
+        public async Task ApplicationInsights_OuterRequestIsTrackedOnce()
         {
             string testName = nameof(TestApplicationInsightsInformation);
             using (IHost host = ConfigureHost())
@@ -282,27 +285,54 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
 
                 RequestTelemetry outerRequest = null;
 
-                // simulate auto tracked HTTP incoming call
+                // simulate auto tracked outer request
                 using (var operation = telemetryClient.StartOperation<RequestTelemetry>("GET /"))
                 {
                     outerRequest = operation.Telemetry;
-                    outerRequest.Success = true;
                     await host.GetJobHost().CallAsync(methodInfo, new { input = "input" });
+                    outerRequest.Success = true;
+                    outerRequest.Context.Location.Ip = _someIp;
+                    outerRequest.ResponseCode = "200";
                 }
 
                 await host.StopAsync();
 
                 // Validate the request
-                // There must be only one reported by the function code
+                // There must be only one reported - outer one
+                RequestTelemetry[] requestTelemetries = _channel.Telemetries.OfType<RequestTelemetry>().ToArray();
+                Assert.Same(outerRequest, requestTelemetries.Single());
+                Assert.Equal(_someIp, outerRequest.Context.Location.Ip);
+                Assert.Equal("200", outerRequest.ResponseCode);
+
+                ValidateRequest(outerRequest, testName, true);
+            }
+        }
+
+        [Fact]
+        public async Task ApplicationInsights_HttpRequestIsTrackedCorrectly()
+        {
+            string testName = nameof(TestApplicationInsightsInformation);
+            using (IHost host = ConfigureHost())
+            {
+                await host.StartAsync();
+                var methodInfo = GetType().GetMethod(testName, BindingFlags.Public | BindingFlags.Static);
+
+                // simulate auto tracked HTTP request
+                var fakeHosting = new FakeAspNetCoreHosting();
+                var httpContext = CreateHttpContext();
+
+                fakeHosting.StartRequest(httpContext);
+                await host.GetJobHost().CallAsync(methodInfo, new { input = "input" });
+                fakeHosting.StopRequest(httpContext, HttpStatusCode.OK);
+                await host.StopAsync();
+
+                // Validate the request
+                // There must be only one reported - http one
                 RequestTelemetry[] requestTelemetries = _channel.Telemetries.OfType<RequestTelemetry>().ToArray();
                 Assert.Single(requestTelemetries);
+                Assert.Equal("200", requestTelemetries[0].ResponseCode);
 
-
-                // and outer one, we started in the test should not - it does not have category and log level
-                RequestTelemetry funtionRequest = requestTelemetries.Single();
-                Assert.NotSame(outerRequest, funtionRequest);
-
-                ValidateRequest(funtionRequest, testName, true);
+                ValidateRequest(requestTelemetries[0], testName, true);
             }
         }
 
@@ -611,11 +641,14 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
         {
             Assert.NotNull(telemetry.Context.Operation.Id);
             Assert.Equal(operationName, telemetry.Context.Operation.Name);
+            Assert.Equal(operationName, telemetry.Name);
             Assert.NotNull(telemetry.Duration);
             Assert.Equal(success, telemetry.Success);
 
             Assert.Equal($"ApplicationInsightsEndToEndTests.{operationName}", telemetry.Properties[LogConstants.FullNameKey]);
             Assert.Equal("This function was programmatically called via the host APIs.", telemetry.Properties[LogConstants.TriggerReasonKey]);
+            Assert.True(telemetry.Properties.ContainsKey(LogConstants.FunctionExecutionTimeKey));
+            Assert.True(telemetry.Properties.ContainsKey(LogConstants.InvocationIdKey));
 
             ValidateSdkVersion(telemetry);
         }
@@ -653,6 +686,42 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 typeof(TelemetryConfiguration).GetMethod("set_Active", BindingFlags.Static | BindingFlags.NonPublic);
 
             setActive.Invoke(null, new object[] {value});
+        }
+
+        private HttpContext CreateHttpContext()
+        {
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Host = HostString.FromUriComponent(_mockUri);
+            httpContext.Request.Scheme = _mockUri.Scheme;
+            httpContext.Request.Method = "GET";
+            httpContext.Request.Path = PathString.FromUriComponent(_mockUri);
+            httpContext.Request.QueryString = QueryString.FromUriComponent(_mockUri);
+
+            return httpContext;
+        }
+
+        private class FakeAspNetCoreHosting
+        {
+            private const string AspNetDiagnosticSourceName = "Microsoft.AspNetCore";
+            private const string ActivityName = "Microsoft.AspNetCore.Hosting.HttpRequestIn";
+            private static readonly DiagnosticListener _source = new DiagnosticListener(AspNetDiagnosticSourceName);
+
+            public Activity StartRequest(HttpContext context)
+            {
+                Activity requestActivity = new Activity(ActivityName);
+                return _source.StartActivity(requestActivity, new { HttpContext = context });
+            }
+
+            public void StopRequest(HttpContext context, HttpStatusCode status)
+            {
+                SetResponse(context, status);
+                _source.StopActivity(Activity.Current, new { HttpContext = context });
+            }
+
+            private void SetResponse(HttpContext httpContext, HttpStatusCode status)
+            {
+                httpContext.Response.StatusCode = (int)status;
+            }
         }
     }
 }
