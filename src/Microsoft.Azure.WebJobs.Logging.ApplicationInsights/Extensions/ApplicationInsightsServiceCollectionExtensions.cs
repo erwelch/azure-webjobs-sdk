@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.AspNetCore;
+using Microsoft.ApplicationInsights.AspNetCore.Extensions;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.DependencyCollector;
 using Microsoft.ApplicationInsights.Extensibility;
@@ -13,8 +15,8 @@ using Microsoft.ApplicationInsights.Extensibility.Implementation;
 using Microsoft.ApplicationInsights.Extensibility.Implementation.ApplicationId;
 using Microsoft.ApplicationInsights.Extensibility.PerfCounterCollector.QuickPulse;
 using Microsoft.ApplicationInsights.SnapshotCollector;
+using Microsoft.ApplicationInsights.W3C;
 using Microsoft.ApplicationInsights.WindowsServer;
-using Microsoft.ApplicationInsights.WindowsServer.Channel.Implementation;
 using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
@@ -39,6 +41,8 @@ namespace Microsoft.Extensions.DependencyInjection
 
         public static IServiceCollection AddApplicationInsights(this IServiceCollection services)
         {
+            string assemblyVersion = GetAssemblyFileVersion(typeof(JobHost).Assembly);
+
             // Bind to the configuration section registered with 
             services.AddOptions<ApplicationInsightsLoggerOptions>()
                 .Configure<ILoggerProviderConfiguration<ApplicationInsightsLoggerProvider>>((options, config) =>
@@ -48,14 +52,23 @@ namespace Microsoft.Extensions.DependencyInjection
 
             services.AddSingleton<ITelemetryInitializer, HttpDependenciesParsingTelemetryInitializer>();
             services.AddSingleton<ITelemetryInitializer, WebJobsRoleEnvironmentTelemetryInitializer>();
-            services.AddSingleton<ITelemetryInitializer, WebJobsTelemetryInitializer>();
             services.AddSingleton<ITelemetryInitializer, WebJobsSanitizingInitializer>();
+
+            services.AddSingleton<ITelemetryInitializer, WebJobsTelemetryInitializer>(provider =>
+            {
+                var options = provider.GetService<IOptions<ApplicationInsightsLoggerOptions>>().Value;
+
+                return new WebJobsTelemetryInitializer($"{options.SdkVersionPrefix}: {assemblyVersion}");
+            });
+
             services.AddSingleton<ITelemetryModule, QuickPulseTelemetryModule>();
 
             services.AddSingleton<IApplicationIdProvider, ApplicationInsightsApplicationIdProvider>();
 
             services.AddSingleton<ITelemetryModule, DependencyTrackingTelemetryModule>(provider =>
             {
+                var options = provider.GetService<IOptions<ApplicationInsightsLoggerOptions>>().Value;
+
                 var dependencyCollector = new DependencyTrackingTelemetryModule();
                 var excludedDomains = dependencyCollector.ExcludeComponentCorrelationHttpHeadersOnDomains;
                 excludedDomains.Add("core.windows.net");
@@ -68,8 +81,29 @@ namespace Microsoft.Extensions.DependencyInjection
                 var includedActivities = dependencyCollector.IncludeDiagnosticSourceActivities;
                 includedActivities.Add("Microsoft.Azure.ServiceBus");
 
+                dependencyCollector.EnableW3CHeadersInjection = !options.DisableW3CDistributedTracing;
                 return dependencyCollector;
             });
+
+            services.AddSingleton<ITelemetryModule, RequestTrackingTelemetryModule>(provider =>
+            {
+                var options = provider.GetService<IOptions<ApplicationInsightsLoggerOptions>>().Value;
+                var appIdProvider = provider.GetService<IApplicationIdProvider>();
+
+                var requestCollector =
+                    new RequestTrackingTelemetryModule(appIdProvider)
+                    {
+                        CollectionOptions = new RequestCollectionOptions
+                        {
+                            TrackExceptions = false, // webjobs/functions track exceptions themselves
+                            EnableW3CDistributedTracing = !options.DisableW3CDistributedTracing,
+                            InjectResponseHeaders = options.EnableResponseHeaderInjection
+                        }
+                    };
+
+                return requestCollector;
+            });
+
             services.AddSingleton<ITelemetryModule, AppServicesHeartbeatTelemetryModule>();
 
             services.AddSingleton<ITelemetryChannel, ServerTelemetryChannel>();
@@ -98,10 +132,12 @@ namespace Microsoft.Extensions.DependencyInjection
             services.AddSingleton<TelemetryClient>(provider =>
             {
                 TelemetryConfiguration configuration = provider.GetService<TelemetryConfiguration>();
+                ApplicationInsightsLoggerOptions options = 
+                    provider.GetService<IOptions<ApplicationInsightsLoggerOptions>>().Value;
+
                 TelemetryClient client = new TelemetryClient(configuration);
 
-                string assemblyVersion = GetAssemblyFileVersion(typeof(JobHost).Assembly);
-                client.Context.GetInternalContext().SdkVersion = $"webjobs: {assemblyVersion}";
+                client.Context.GetInternalContext().SdkVersion = $"{options.SdkVersionPrefix}: {assemblyVersion}";
 
                 return client;
             });
@@ -152,9 +188,26 @@ namespace Microsoft.Extensions.DependencyInjection
             {
                 configuration.InstrumentationKey = options.InstrumentationKey;
 
-                // Because of https://github.com/Microsoft/ApplicationInsights-dotnet-server/issues/943
-                // we have to touch (and create) Active configuration before initializing telemetry modules 
-                TelemetryConfiguration.Active.InstrumentationKey = options.InstrumentationKey;
+                if (string.IsNullOrEmpty(TelemetryConfiguration.Active.InstrumentationKey))
+                {
+                    // Because of https://github.com/Microsoft/ApplicationInsights-dotnet-server/issues/943
+                    // we have to touch (and create) Active configuration before initializing telemetry modules 
+                    TelemetryConfiguration.Active.InstrumentationKey = options.InstrumentationKey;
+                    if (!options.DisableW3CDistributedTracing)
+                    {
+                        TelemetryConfiguration.Active.TelemetryInitializers.Add(new W3COperationCorrelationTelemetryInitializer());
+                    }
+                }
+            }
+
+            if (!options.DisableW3CDistributedTracing)
+            {
+#pragma warning disable 612, 618
+                // W3C distributed tracing is enabled by the feature flag inside ApplicationInsights SDK
+                // W3COperationCorrelationTelemetryInitializer will go away once W3C is implemented
+                // in the DiagnosticSource (.NET)
+                configuration.TelemetryInitializers.Add(new W3COperationCorrelationTelemetryInitializer());
+#pragma warning restore 612, 618
             }
 
             configuration.TelemetryChannel = channel;

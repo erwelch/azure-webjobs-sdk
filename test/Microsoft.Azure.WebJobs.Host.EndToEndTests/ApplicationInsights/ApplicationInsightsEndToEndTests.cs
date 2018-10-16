@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Tracing;
 using System.IO;
 using System.IO.Compression;
@@ -19,6 +20,8 @@ using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.ApplicationInsights.Extensibility.Implementation;
 using Microsoft.ApplicationInsights.Extensibility.PerfCounterCollector.QuickPulse;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights;
 using Microsoft.Azure.WebJobs.Host.TestCommon;
 using Microsoft.Azure.WebJobs.Logging;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +44,8 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
         private const string _customScopeValue = "MyCustomScopeValue";
 
         private const string _dateFormat = "HH':'mm':'ss'.'fffZ";
+        private const int _expectedResponseCode = 204;
+        private static readonly Uri _expectedUrl = new Uri("http://localhost/some/path");
 
         private IHost ConfigureHost(LogLevel minLevel = LogLevel.Information)
         {
@@ -321,7 +326,54 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 RequestTelemetry functionRequest = requestTelemetries.Single();
                 Assert.Same(outerRequest, functionRequest);
 
+                Assert.True(double.TryParse(functionRequest.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
+                Assert.True(functionRequest.Duration.TotalMilliseconds >= functionDuration);
+
                 ValidateRequest(functionRequest, testName, true);
+            }
+        }
+
+        [Fact]
+        public async Task ApplicationInsights_HttpRequestTracking()
+        {
+            var fakeAspNetCore = new FakeAspNetCore();
+            string testName = nameof(TestApplicationInsightsInformation);
+            using (IHost host = ConfigureHost())
+            {
+                await host.StartAsync();
+
+                var httpContext = fakeAspNetCore.CreateFakeContext(new Dictionary<string, string>
+                {
+                    ["traceparent"] = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+                });
+
+                // simulate auto tracked HTTP incoming call
+                var activity = fakeAspNetCore.StartRequest(httpContext);
+
+                MethodInfo methodInfo = GetType().GetMethod(testName, BindingFlags.Public | BindingFlags.Static);
+                await host.GetJobHost().CallAsync(methodInfo, new { input = "input" });
+                fakeAspNetCore.StopRequest(activity, httpContext);
+
+                await host.StopAsync();
+
+                // Validate the request
+                // There must be only one reported by the AppInsights request collector
+                RequestTelemetry[] requestTelemetries = _channel.Telemetries.OfType<RequestTelemetry>().ToArray();
+                Assert.Single(requestTelemetries);
+
+                RequestTelemetry functionRequest = requestTelemetries.Single();
+
+                Assert.True(double.TryParse(functionRequest.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
+                Assert.True(functionRequest.Duration.TotalMilliseconds >= functionDuration);
+                ValidateRequest(
+                    functionRequest,
+                    testName, 
+                    true, 
+                    "4bf92f3577b34da6a3ce929d0e0e4736",
+                    "|4bf92f3577b34da6a3ce929d0e0e4736.00f067aa0ba902b7.");
+
+                Assert.Equal(_expectedUrl, functionRequest.Url);
+                Assert.Equal(_expectedResponseCode.ToString(), functionRequest.ResponseCode);
             }
         }
 
@@ -647,7 +699,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             ValidateSdkVersion(telemetry);
         }
 
-        private static void ValidateRequest(RequestTelemetry telemetry, string operationName, bool success)
+        private static void ValidateRequest(RequestTelemetry telemetry, string operationName, bool success, string operationId = null, string parentId = null)
         {
             Assert.NotNull(telemetry.Context.Operation.Id);
             Assert.Equal(operationName, telemetry.Context.Operation.Name);
@@ -659,7 +711,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             Assert.Equal($"ApplicationInsightsEndToEndTests.{operationName}", telemetry.Properties[LogConstants.FullNameKey]);
             Assert.Equal("This function was programmatically called via the host APIs.", telemetry.Properties[LogConstants.TriggerReasonKey]);
 
-            ValidateSdkVersion(telemetry);
+            TelemetryValidationHelpers.ValidateRequest(telemetry, operationName, operationId, parentId, LogCategories.Results, success? LogLevel.Information : LogLevel.Error);
         }
 
         private static void ValidateSdkVersion(ITelemetry telemetry)
@@ -733,6 +785,54 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
         public void Dispose()
         {
             _channel?.Dispose();
+        }
+
+        class FakeAspNetCore
+        {
+            private static readonly DiagnosticListener aspNetCoreSource = new DiagnosticListener("Microsoft.AspNetCore");
+                
+            public Activity StartRequest(HttpContext context)
+            {
+                var activity = new Activity("Microsoft.AspNetCore.Hosting.HttpRequestIn");
+                if (context.Request.Headers.TryGetValue("Request-Id", out var requestId))
+                {
+                    activity.SetParentId(requestId);
+                }
+
+                return aspNetCoreSource.StartActivity(activity, new {HttpContext = context});
+            }
+
+            public void SendException(HttpContext context, Exception ex)
+            {
+                aspNetCoreSource.Write("Microsoft.AspNetCore.Hosting.UnhandledException", new {HttpContext = context, Exception = ex});
+            }
+
+            public void StopRequest(Activity activity, HttpContext context)
+            {
+                aspNetCoreSource.StopActivity(activity, new { HttpContext = context });
+            }
+
+            public HttpContext CreateFakeContext(Dictionary<string, string> headers)
+            {
+                var httpContext = new DefaultHttpContext();
+
+                if (headers != null)
+                {
+                    foreach (var h in headers)
+                    {
+                        httpContext.Request.Headers.Add(h.Key, h.Value);
+                    }
+                }
+
+                httpContext.Request.Host = new HostString(_expectedUrl.Host);
+                httpContext.Request.Scheme = _expectedUrl.Scheme;
+                httpContext.Request.Method = "GET";
+                httpContext.Request.Path = _expectedUrl.AbsolutePath;
+
+                httpContext.Response.StatusCode = _expectedResponseCode;
+
+                return httpContext;
+            }
         }
     }
 }

@@ -8,6 +8,8 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
 {
     public class ApplicationInsightsLoggerOptions
     {
+        public const string DefaultSdkVersionPrefix = "webjobs";
+
         public string InstrumentationKey { get; set; }
 
         public SamplingPercentageEstimatorSettings SamplingSettings { get; set; }
@@ -15,5 +17,11 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
         public SnapshotCollectorConfiguration SnapshotConfiguration { get; set; }
 
         public string QuickPulseAuthenticationApiKey { get; set; }
+
+        public bool DisableW3CDistributedTracing { get; set; } = false;
+
+        public bool EnableResponseHeaderInjection { get; set; } = false;
+
+        public string SdkVersionPrefix { get; set; } = DefaultSdkVersionPrefix;
     }
 }

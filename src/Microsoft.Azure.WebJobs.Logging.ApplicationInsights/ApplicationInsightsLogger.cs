@@ -9,6 +9,7 @@ using System.Linq;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.ApplicationInsights.W3C;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
@@ -450,6 +451,15 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
 
                     // We'll need to store this operation context so we can stop it when the function completes
                     IOperationHolder<RequestTelemetry> operation = _telemetryClient.StartOperation(request);
+
+#pragma warning disable 612, 618
+                    // currently ApplicationInsights supports 2 parallel correlation schemes:
+                    // legacy and W3C, they both appear in telemetry. UX handles all differences in operation Ids. 
+                    // This will be resolved in next .NET SDK on Activity level.
+                    // This ensures W3C context is set on the Activity.
+                    Activity.Current?.GenerateW3CContext();
+#pragma warning restore 612, 618
+
                     stateValues[OperationContext] = operation;
                 }
             }

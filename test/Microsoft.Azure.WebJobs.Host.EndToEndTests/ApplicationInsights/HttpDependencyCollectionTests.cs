@@ -114,7 +114,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             }
 
 
-            // PUT conatiner, HEAD blob, PUT lease, PUT content
+            // PUT container, HEAD blob, PUT lease, PUT content
             // since there could be failures and retries, we should expect more
             Assert.True(outDependencies.Count <= 4);
 
