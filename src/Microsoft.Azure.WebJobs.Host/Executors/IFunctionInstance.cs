@@ -12,6 +12,9 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
 
         Guid? ParentId { get; }
 
+        string Traceparent { get; }
+        string Tracestate { get; }
+
         ExecutionReason Reason { get; }
 
         IBindingSource BindingSource { get; }

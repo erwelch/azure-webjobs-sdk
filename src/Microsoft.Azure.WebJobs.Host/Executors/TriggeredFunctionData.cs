@@ -16,6 +16,10 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
         /// </summary>
         public Guid? ParentId { get; set; }
 
+        public string Traceparent { get; set; }
+
+        public string Tracestate { get; set; }
+
         /// <summary>
         /// The trigger value for a specific triggered function invocation.
         /// </summary>
