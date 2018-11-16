@@ -65,6 +65,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
 
             List<RequestTelemetry> requests = _channel.Telemetries.OfType<RequestTelemetry>().ToList();
             List<DependencyTelemetry> dependencies = _channel.Telemetries.OfType<DependencyTelemetry>().ToList();
+            List<TraceTelemetry> traces = _channel.Telemetries.OfType<TraceTelemetry>().ToList();
 
             Assert.Equal(2, requests.Count);
 
@@ -91,12 +92,11 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             Assert.Equal(manualOperationId, sbOutDependency.Context.Operation.Id);
             Assert.Equal(manualCallLegacyRootId, triggerCallLegacyRootId);
 
-            ValidateServiceBusDependency(sbOutDependency, _endpoint, _queueName, "Send", nameof(ServiceBusOut), operationId, manualCallRequest.Id);
-            ValidateServiceBusRequest(sbTriggerRequest, success, _endpoint, _queueName, nameof(ServiceBusTrigger), operationId, sbOutDependency.Id);
+            var functionTraces = traces.Where(t => t.Context.Operation.Id == sbTriggerRequest.Context.Operation.Id);
+            Assert.Equal(success ? 4 : 6, functionTraces.Count());
 
-            // Make sure that the trigger traces are correlated
-            var traces = _channel.Telemetries.OfType<TraceTelemetry>().Where(t => t.Context.Operation.Id == operationId);
-            Assert.Equal(success ? 6 : 8, traces.Count());
+            ValidateServiceBusDependency(sbOutDependency, _endpoint, _queueName, "Send", nameof(ServiceBusOut), manualOperationId, manualCallRequest.Id);
+            ValidateServiceBusRequest(sbTriggerRequest, success, _endpoint, _queueName, nameof(ServiceBusTrigger), triggerOperationId, dependencyLegacyId);
         }
 
         [Fact]
@@ -117,6 +117,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
 
             List<RequestTelemetry> requests = _channel.Telemetries.OfType<RequestTelemetry>().ToList();
             List<DependencyTelemetry> dependencies = _channel.Telemetries.OfType<DependencyTelemetry>().ToList();
+            List<TraceTelemetry> traces = _channel.Telemetries.OfType<TraceTelemetry>().ToList();
 
             Assert.Single(requests);
 
@@ -131,7 +132,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             ValidateServiceBusRequest(request, true, _endpoint, _queueName, nameof(ServiceBusTrigger), null, null);
 
             // Make sure that the trigger traces are correlated
-            var traces = _channel.Telemetries.OfType<TraceTelemetry>().Where(t => t.Context.Operation.Id == request.Context.Operation.Id);
+            traces = _channel.Telemetries.OfType<TraceTelemetry>().Where(t => t.Context.Operation.Id == request.Context.Operation.Id).ToList();
             Assert.Equal(4, traces.Count());
         }
 
@@ -202,7 +203,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             Assert.Equal("Azure Service Bus", dependency.Type);
             Assert.Equal(name, dependency.Name);
             Assert.True(dependency.Success);
-            Assert.Null(dependency.Data);
+            Assert.True(string.IsNullOrEmpty(dependency.Data));
             TelemetryValidationHelpers.ValidateDependency(dependency, operationName, operationId, parentId, LogCategories.Bindings);
         }
 
