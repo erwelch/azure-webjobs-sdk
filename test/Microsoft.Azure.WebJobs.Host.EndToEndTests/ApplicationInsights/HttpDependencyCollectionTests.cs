@@ -159,6 +159,30 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
         }
 
         [Fact]
+        public async Task UserCodeHttpCallsAreReportedOnceWhenMultipleHostsAreActive()
+        {
+            string testName = nameof(UserCodeHttpCall);
+            using (var host1 = ConfigureHost(LogLevel.Information))
+            using (var host2 = ConfigureHost(LogLevel.Information))
+            {
+                await host1.StartAsync();
+                await host2.StartAsync();
+
+                await host1.GetJobHost()
+                    .CallAsync(typeof(HttpDependencyCollectionTests).GetMethod(testName));
+
+                _functionWaitHandle.WaitOne();
+                await Task.Delay(1000);
+
+                await host1.StopAsync();
+                await host2.StopAsync();
+            }
+
+            Assert.Single(_channel.Telemetries.OfType<RequestTelemetry>());
+            Assert.Single(_channel.Telemetries.OfType<DependencyTelemetry>());
+        }
+
+        [Fact]
         public async Task BlobTriggerCallsAreReported()
         {
             using (var host = ConfigureHost(LogLevel.Information))

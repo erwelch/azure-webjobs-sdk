@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.Azure.WebJobs.Logging;
 using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
@@ -9,7 +10,7 @@ using Xunit;
 
 namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
 {
-    public class WebJobsTelemetryInitializerTests
+    public class WebJobsTelemetryInitializerTests : IDisposable
     {
         // App Insights performs auto-tracking by watching DiagnosticSources 
         // from the .NET Framework. During host restarts in Functions, it's 
@@ -33,19 +34,20 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 Name = "POST api/somemethod",
             };
 
-            request.Properties[LogConstants.NameKey] = functionName;
-            request.Properties[LogConstants.SucceededKey] = "true";
+            Activity requestActivity = new Activity("dummy");
+            requestActivity.Start();
+            requestActivity.AddTag(LogConstants.NameKey, functionName);
+            requestActivity.AddTag(LogConstants.SucceededKey, "true");
 
             var initializer = new WebJobsTelemetryInitializer(new WebJobsSdkVersionProvider());
 
             initializer.Initialize(request);
             initializer.Initialize(request);
 
-            Assert.Equal(functionName, request.Name);
+            Assert.Equal(functionName, request.Context.Operation.Name);
             Assert.Equal(status, request.ResponseCode);
             Assert.Equal(true, request.Success);
-            Assert.Equal(uri.GetLeftPart(UriPartial.Path), request.Url.ToString());
-            Assert.Equal("POST", request.Properties[LogConstants.HttpMethodKey]);
+            Assert.Equal("POST api/somemethod", request.Name);
             Assert.DoesNotContain(request.Properties, p => p.Key == LogConstants.SucceededKey);
         }
 
@@ -61,8 +63,10 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 Name = "",
             };
 
-            request.Properties[LogConstants.NameKey] = functionName;
-            request.Properties[LogConstants.SucceededKey] = "true";
+            Activity requestActivity = new Activity("dummy");
+            requestActivity.Start();
+            requestActivity.AddTag(LogConstants.NameKey, functionName);
+            requestActivity.AddTag(LogConstants.SucceededKey, "true");
 
             var initializer = new WebJobsTelemetryInitializer(new WebJobsSdkVersionProvider());
 
@@ -73,8 +77,15 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
             Assert.Equal("0", request.ResponseCode);
             Assert.Equal(true, request.Success);
             Assert.Null(request.Url);
-            Assert.DoesNotContain(request.Properties, p => p.Key == LogConstants.HttpMethodKey);
             Assert.DoesNotContain(request.Properties, p => p.Key == LogConstants.SucceededKey);
+        }
+
+        public void Dispose()
+        {
+            while (Activity.Current != null)
+            {
+                Activity.Current.Stop();
+            }
         }
     }
 }

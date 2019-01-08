@@ -48,7 +48,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
         [Theory]
         [InlineData("message", true)]
         [InlineData("throw", false)]
-        public async Task ServiceBusDepenedenciesAndRequestAreTracked(string message, bool success)
+        public async Task ServiceBusDependenciesAndRequestAreTracked(string message, bool success)
         {
             using (var host = ConfigureHost())
             {
@@ -72,11 +72,14 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             // One dependency for the 'Send' from ServiceBusOut
             // One dependency for the 'Complete' call in ServiceBusTrigger
             Assert.Equal(2, dependencies.Count);
-            var sbOutDependency = dependencies.Single(d => d.Name == "Send");
             Assert.Single(dependencies, d => d.Name == "Complete");
+            Assert.Single(dependencies, d => d.Name == "Send");
 
-            var sbTriggerRequest = requests.Single(r => r.Name == nameof(ServiceBusTrigger));
-            var manualCallRequest = requests.Single(r => r.Name == nameof(ServiceBusOut));
+            var sbOutDependency = dependencies.Single(d => d.Name == "Send");
+            var completeDependency = dependencies.Single(d => d.Name == "Complete");
+
+            var sbTriggerRequest = requests.Single(r => r.Context.Operation.Name == nameof(ServiceBusTrigger));
+            var manualCallRequest = requests.Single(r => r.Context.Operation.Name == nameof(ServiceBusOut));
 
             string manualOperationId = manualCallRequest.Context.Operation.Id;
             string triggerOperationId = sbTriggerRequest.Context.Operation.Id;
@@ -92,11 +95,64 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             Assert.Equal(manualOperationId, sbOutDependency.Context.Operation.Id);
             Assert.Equal(manualCallLegacyRootId, triggerCallLegacyRootId);
 
-            var functionTraces = traces.Where(t => t.Context.Operation.Id == sbTriggerRequest.Context.Operation.Id);
-            Assert.Equal(success ? 4 : 6, functionTraces.Count());
-
-            ValidateServiceBusDependency(sbOutDependency, _endpoint, _queueName, "Send", nameof(ServiceBusOut), manualOperationId, manualCallRequest.Id);
             ValidateServiceBusRequest(sbTriggerRequest, success, _endpoint, _queueName, nameof(ServiceBusTrigger), triggerOperationId, dependencyLegacyId);
+            ValidateServiceBusDependency(
+                sbOutDependency,
+                _endpoint,
+                _queueName, 
+                "Send", 
+                nameof(ServiceBusOut), 
+                manualOperationId, 
+                manualCallRequest.Id,
+                LogCategories.Bindings);
+
+            ValidateServiceBusDependency(
+                completeDependency,
+                _endpoint,
+                _queueName,
+                "Complete",
+                nameof(ServiceBusTrigger),
+                sbTriggerRequest.Context.Operation.Id,
+                sbTriggerRequest.Id,
+                LogCategories.CreateFunctionCategory(nameof(ServiceBusTrigger)));
+
+            var functionTraces = traces.Where(t => t.Context.Operation.Id == sbTriggerRequest.Context.Operation.Id).ToList();
+            Assert.Equal(success ? 4 : 6, functionTraces.Count);
+
+            foreach (var trace in functionTraces)
+            {
+                Assert.Equal(sbTriggerRequest.Context.Operation.Id, trace.Context.Operation.Id);
+                Assert.Equal(sbTriggerRequest.Id, trace.Context.Operation.ParentId);
+            }
+        }
+
+        [Fact]
+        public async Task ServiceBusRequestMultiHost()
+        {
+            var sender = new MessageSender(_connectionString, _queueName);
+            await sender.SendAsync(new Message { Body = Encoding.UTF8.GetBytes("message"), ContentType = "text/plain" });
+
+            using (var host1 = ConfigureHost())
+            using (var host2 = ConfigureHost())
+            {
+                await host1.StartAsync();
+                await host2.StartAsync();
+
+                _functionWaitHandle.WaitOne();
+
+                await Task.Delay(1000);
+
+                await host1.StopAsync();
+                await host2.StopAsync();
+            }
+
+            List<RequestTelemetry> requests = _channel.Telemetries.OfType<RequestTelemetry>().ToList();
+            List<DependencyTelemetry> dependencies = _channel.Telemetries.OfType<DependencyTelemetry>().ToList();
+            List<TraceTelemetry> traces = _channel.Telemetries.OfType<TraceTelemetry>().Where(t => t.Context.Operation.Id != null).ToList();
+
+            Assert.Single(requests);
+            Assert.Single(dependencies);
+            Assert.Equal(4, traces.Count);
         }
 
         [Fact]
@@ -123,17 +179,34 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
 
             // The call to Complete the message registers as a dependency
             Assert.Single(dependencies);
-            Assert.Equal("Complete", dependencies.Single().Name);
+
+            Assert.Single(dependencies, d => d.Name == "Complete");
+            var completeDependency = dependencies.Single(d => d.Name == "Complete");
 
             var request = requests.Single();
 
             Assert.NotNull(request.Context.Operation.Id);
 
             ValidateServiceBusRequest(request, true, _endpoint, _queueName, nameof(ServiceBusTrigger), null, null);
+            ValidateServiceBusDependency(
+                completeDependency,
+                _endpoint, 
+                _queueName, 
+                "Complete",
+                nameof(ServiceBusTrigger), 
+                request.Context.Operation.Id,
+                request.Id,
+                LogCategories.CreateFunctionCategory(nameof(ServiceBusTrigger)));
 
             // Make sure that the trigger traces are correlated
             traces = _channel.Telemetries.OfType<TraceTelemetry>().Where(t => t.Context.Operation.Id == request.Context.Operation.Id).ToList();
             Assert.Equal(4, traces.Count());
+
+            foreach (var trace in traces)
+            {
+                Assert.Equal(request.Context.Operation.Id, trace.Context.Operation.Id);
+                Assert.Equal(request.Id, trace.Context.Operation.ParentId);
+            }
         }
 
         [NoAutomaticTrigger]
@@ -178,7 +251,8 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
         {
             Assert.Equal($"type:Azure Service Bus | name:{queueName} | endpoint:{endpoint}/", request.Source);
             Assert.Null(request.Url);
-            Assert.Equal(operationName, request.Name);
+            Assert.Equal(operationName, request.Context.Operation.Name);
+            Assert.Equal("Process", request.Name);
 
             Assert.True(request.Properties.ContainsKey(LogConstants.FunctionExecutionTimeKey));
             Assert.True(double.TryParse(request.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
@@ -197,14 +271,15 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             string name,
             string operationName,
             string operationId,
-            string parentId)
+            string parentId,
+            string category)
         {
             Assert.Equal($"{endpoint}/ | {queueName}", dependency.Target);
             Assert.Equal("Azure Service Bus", dependency.Type);
             Assert.Equal(name, dependency.Name);
             Assert.True(dependency.Success);
             Assert.True(string.IsNullOrEmpty(dependency.Data));
-            TelemetryValidationHelpers.ValidateDependency(dependency, operationName, operationId, parentId, LogCategories.Bindings);
+            TelemetryValidationHelpers.ValidateDependency(dependency, operationName, operationId, parentId, category);
         }
 
         public IHost ConfigureHost()

@@ -112,13 +112,6 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                         }
                     }
                 }
-                else // workaround for https://github.com/Microsoft/ApplicationInsights-dotnet-server/issues/1038
-                {
-                    foreach (var property in request.Properties)
-                    {
-                        TryApplyProperty(request, property);
-                    }
-                }
             }
         }
 
@@ -147,22 +140,6 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             {
                 request.ResponseCode = "0";
             }
-
-            // If the Url is not null, it's an actual HttpRequest, as opposed to a
-            // Service Bus or other function invocation that we're tracking as a Request
-            if (request.Url != null)
-            {
-                // We don't want to include the query string in URLs
-                request.Url = new Uri(request.Url.GetLeftPart(UriPartial.Path));
-
-                // App Insights sets this as 'VERB /url/path'. We want to extract the VERB. 
-                // Only do this if HttpMethod is not already set.
-                if (!string.IsNullOrEmpty(httpMethod) &&
-                    !request.Properties.ContainsKey(LogConstants.HttpMethodKey))
-                {
-                    request.Properties[LogConstants.HttpMethodKey] = httpMethod;
-                }
-            }
         }
 
         /// <summary>
@@ -178,14 +155,18 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             if (property.Key == LogConstants.NameKey)
             {
                 request.Context.Operation.Name = property.Value;
-                request.Name = property.Value;
+                if (string.IsNullOrEmpty(request.Name))
+                {
+                    request.Name = property.Value;
+                }
+
                 wasPropertySet = true;
             }
             else if (property.Key == LogConstants.SucceededKey &&
                 bool.TryParse(property.Value, out bool success))
             {
                 // no matter what App Insights says about the response, we always
-                // want to use the function's result for Succeeeded
+                // want to use the function's result for Succeeded
                 request.Success = success;
                 wasPropertySet = true;
 

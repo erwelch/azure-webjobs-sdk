@@ -276,13 +276,17 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 }).Build())
             {
                 // Verify Initializers
-                Assert.Equal(2, TelemetryConfiguration.Active.TelemetryInitializers.Count);
+                Assert.Equal(3, TelemetryConfiguration.Active.TelemetryInitializers.Count);
 
                 // These will throw if there are not exactly one
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<OperationCorrelationTelemetryInitializer>());
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsRoleEnvironmentTelemetryInitializer>());
+#pragma warning disable 612, 618
+                Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<W3COperationCorrelationTelemetryInitializer>());
+#pragma warning restore 612, 618
             }
         }
+
         [Fact]
         public void DependencyInjectionConfiguration_ConfiguresActiveOnlyOnce()
         {
