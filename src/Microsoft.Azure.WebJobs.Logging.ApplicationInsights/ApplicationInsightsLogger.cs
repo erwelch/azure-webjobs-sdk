@@ -185,7 +185,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 telemetry.Properties[LogConstants.FormattedMessageKey] = formattedMessage;
 
                 // Also log a trace if there's a formattedMessage. This ensures that the error is visible
-                // in both App Insights analytics tables.
+                // in both App Insights analitycs tables.
                 LogTrace(logLevel, values, formattedMessage);
             }
 
@@ -354,8 +354,8 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
         private static void ApplyFunctionResultActivityTags(IEnumerable<KeyValuePair<string, object>> state, IDictionary<string, object> scope)
         {
             // Activity carries tracing context. It is managed by instrumented library (e.g. ServiceBus or Asp.Net Core)
-            // and consumed by ApplicationInsigts.
-            // This function stamps all function-related tags on the Activity. Then WebJobsTelemetryIntitializer sets them on the RequestTelemetry.
+            // and consumed by ApplicationInsights.
+            // This function stamps all function-related tags on the Activity. Then WebJobsTelemetryInitializer sets them on the RequestTelemetry.
             // This way, requests reported by WebJobs (e.g. timer trigger) and requests reported by ApplicationInsights (Http, ServiceBus)
             // both have essential information about function execution
             Activity currentActivity = Activity.Current;
@@ -429,12 +429,11 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 return;
             }
 
-            // Http and ServiceBus triggers are tracked automatically by the ApplicationInsights SDK
+            // HTTP and ServiceBus triggers are tracked automatically by the ApplicationInsights SDK
             // In such case a current Activity is present.
-            // We won't track and only stamp function specific details on the RequestTelemtery
+            // We won't track and only stamp function specific details on the RequestTelemetry
             // created by SDK via Activity when function ends
-            if (Activity.Current == null ||
-                DictionaryLoggerScope.GetMergedStateDictionary().ContainsKey("MS_IgnoreActivity"))
+            if (Activity.Current == null)
             {
                 string functionName = stateValues.GetValueOrDefault<string>(ScopeKeys.FunctionName);
                 string functionInvocationId = stateValues.GetValueOrDefault<string>(ScopeKeys.FunctionInvocationId);

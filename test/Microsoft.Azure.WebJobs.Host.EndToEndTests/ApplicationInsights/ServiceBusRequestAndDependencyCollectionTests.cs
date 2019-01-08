@@ -251,16 +251,12 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
         {
             Assert.Equal($"type:Azure Service Bus | name:{queueName} | endpoint:{endpoint}/", request.Source);
             Assert.Null(request.Url);
-            Assert.Equal(operationName, request.Context.Operation.Name);
-            Assert.Equal("Process", request.Name);
 
             Assert.True(request.Properties.ContainsKey(LogConstants.FunctionExecutionTimeKey));
             Assert.True(double.TryParse(request.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
             Assert.True(request.Duration.TotalMilliseconds >= functionDuration);
 
-            Assert.DoesNotContain(request.Properties, p => p.Key == LogConstants.HttpMethodKey);
-
-            TelemetryValidationHelpers.ValidateRequest(request, operationName, operationId, parentId, LogCategories.Results,
+            TelemetryValidationHelpers.ValidateRequest(request, operationName, "Process", operationId, parentId, LogCategories.Results,
                 success ? LogLevel.Information : LogLevel.Error, success);
         }
 

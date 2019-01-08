@@ -110,7 +110,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 RequestTelemetry request = _channel.Telemetries
                     .OfType<RequestTelemetry>()
                     .Single();
-                ValidateRequest(request, testName, true);
+                ValidateRequest(request, testName, testName, true);
 
                 // invocation id is retrievable from the request
                 request.Properties.TryGetValue(LogConstants.InvocationIdKey, out string invocationId);
@@ -167,7 +167,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 RequestTelemetry request = _channel.Telemetries
                     .OfType<RequestTelemetry>()
                     .Single();
-                ValidateRequest(request, testName, false);
+                ValidateRequest(request, testName, testName, false);
 
                 // invocation id is retrievable from the request
                 request.Properties.TryGetValue(LogConstants.InvocationIdKey, out string invocationId);
@@ -365,7 +365,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 Assert.True(double.TryParse(functionRequest.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
                 Assert.True(functionRequest.Duration.TotalMilliseconds >= functionDuration);
 
-                ValidateRequest(functionRequest, testName, true, "0");
+                ValidateRequest(functionRequest, testName, "GET /", true, "0");
             }
         }
 
@@ -403,70 +403,11 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 ValidateRequest(
                     functionRequest,
                     testName,
+                    "GET /some/path",
                     success,
                     "204",
                     "4bf92f3577b34da6a3ce929d0e0e4736",
-                    "|4bf92f3577b34da6a3ce929d0e0e4736.00f067aa0ba902b7.",
-                    "GET");
-
-                Assert.Equal(_expectedUrl, functionRequest.Url);
-                Assert.Equal(HttpMethod.Get.ToString(), functionRequest.Properties[LogConstants.HttpMethodKey]);
-
-                // Make sure operation ids match
-                var traces = _channel.Telemetries.OfType<TraceTelemetry>()
-                    .Where(t => t.Context.Operation.Id == functionRequest.Context.Operation.Id);
-                Assert.Equal(success ? 4 : 5, traces.Count());
-            }
-        }
-
-        [Theory]
-        [InlineData(nameof(TestApplicationInsightsInformation), true)]
-        [InlineData(nameof(TestApplicationInsightsFailure), false)]
-        public async Task ApplicationInsights_HttpRequestTracking_Override(string testName, bool success)
-        {
-            // In Functions, some functions are invoked via the portal and we do *not* want them
-            // tracked as real HttpRequests in that scenario. So we need to set a scope that tells
-            // the function to instead manually start its own telemetry and ignore the current Activity.
-            var client = _factory.CreateClient();
-
-            using (IHost host = ConfigureHost())
-            {
-                Startup.Host = host;
-                await host.StartAsync();
-
-                var request = new HttpRequestMessage(HttpMethod.Get, $"/some/path?name={testName}&override");
-                request.Headers.Add("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
-
-                await client.SendAsync(request);
-
-                await host.StopAsync();
-
-                // Validate the request
-                // There must be only one reported by the AppInsights request collector
-                // The telemetry may come back slightly later, so wait until we see it
-                RequestTelemetry functionRequest = null;
-                await TestHelpers.Await(() =>
-                {
-                    functionRequest = _channel.Telemetries.OfType<RequestTelemetry>().SingleOrDefault();
-                    return functionRequest != null;
-                });
-
-                Assert.True(double.TryParse(functionRequest.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
-                Assert.True(functionRequest.Duration.TotalMilliseconds >= functionDuration);
-
-                // Make sure it gets its own unique operation id
-                Assert.NotEqual("4bf92f3577b34da6a3ce929d0e0e4736", functionRequest.Context.Operation.Id);
-
-                ValidateRequest(
-                    functionRequest,
-                    testName,
-                    success,
-                    "0",
-                    functionRequest.Context.Operation.Id,
                     "|4bf92f3577b34da6a3ce929d0e0e4736.00f067aa0ba902b7.");
-
-                Assert.Null(functionRequest.Url);
-                Assert.DoesNotContain(functionRequest.Properties, p => p.Key == LogConstants.HttpMethodKey);
 
                 // Make sure operation ids match
                 var traces = _channel.Telemetries.OfType<TraceTelemetry>()
@@ -518,14 +459,12 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                     ValidateRequest(
                         functionRequest,
                         testName,
+                        "GET /some/path",
                         true,
                         "204",
                         "4bf92f3577b34da6a3ce929d0e0e4736",
-                        "|4bf92f3577b34da6a3ce929d0e0e4736.00f067aa0ba902b7.",
-                        "GET");
+                        "|4bf92f3577b34da6a3ce929d0e0e4736.00f067aa0ba902b7.");
 
-                    Assert.Equal(_expectedUrl, functionRequest.Url);
-                    Assert.Equal(HttpMethod.Get.ToString(), functionRequest.Properties[LogConstants.HttpMethodKey]);
                     Assert.Equal(_expectedResponseCode.ToString(), functionRequest.ResponseCode);
                 }
             }
@@ -853,8 +792,8 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             ValidateSdkVersion(telemetry);
         }
 
-        private static void ValidateRequest(RequestTelemetry telemetry, string operationName, bool success, string statusCode = "0",
-            string operationId = null, string parentId = null, string httpMethod = null)
+        private static void ValidateRequest(RequestTelemetry telemetry, string operationName, string name, bool success, string statusCode = "0",
+            string operationId = null, string parentId = null)
         {
             Assert.NotNull(telemetry.Context.Operation.Id);
             Assert.Equal(operationName, telemetry.Context.Operation.Name);
@@ -866,8 +805,8 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             Assert.Equal($"ApplicationInsightsEndToEndTests.{operationName}", telemetry.Properties[LogConstants.FullNameKey]);
             Assert.Equal("This function was programmatically called via the host APIs.", telemetry.Properties[LogConstants.TriggerReasonKey]);
 
-            TelemetryValidationHelpers.ValidateRequest(telemetry, operationName, operationId, parentId, LogCategories.Results,
-                success ? LogLevel.Information : LogLevel.Error, success, statusCode, httpMethod);
+            TelemetryValidationHelpers.ValidateRequest(telemetry, operationName, name, operationId, parentId, LogCategories.Results,
+                success ? LogLevel.Information : LogLevel.Error, success, statusCode);
         }
 
         private static void ValidateSdkVersion(ITelemetry telemetry)
@@ -958,32 +897,9 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 {
                     MethodInfo methodInfo = typeof(ApplicationInsightsEndToEndTests).GetMethod(context.Request.Query["name"], BindingFlags.Public | BindingFlags.Static);
 
-                    Task invokeFunction()
-                    {
-                        return Host.GetJobHost().CallAsync(methodInfo, new { input = "input" });
-                    }
-
                     try
                     {
-                        var overrideTracking = context.Request.Query["override"].Count > 0;
-                        if (overrideTracking)
-                        {
-                            Task ignore = Task.Run(async () =>
-                            {
-                                ILogger logger = Host.Services.GetService<ILogger<Startup>>();
-                                using (logger.BeginScope(new Dictionary<string, object>
-                                {
-                                    { "MS_IgnoreActivity", null }
-                                }))
-                                {
-                                    await invokeFunction();
-                                }
-                            });
-                        }
-                        else
-                        {
-                            await invokeFunction();
-                        }
+                        await Host.GetJobHost().CallAsync(methodInfo, new { input = "input" });
                     }
                     catch
                     {

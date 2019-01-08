@@ -100,11 +100,6 @@ namespace Microsoft.Azure.WebJobs.Logging
         public const string CategoryNameKey = "Category";
 
         /// <summary>
-        /// Gets the name of the key used to store the HTTP method.
-        /// </summary>
-        public const string HttpMethodKey = "HttpMethod";
-
-        /// <summary>
         /// Gets the prefix for custom properties.
         /// </summary>
         public const string CustomPropertyPrefix = "prop__";

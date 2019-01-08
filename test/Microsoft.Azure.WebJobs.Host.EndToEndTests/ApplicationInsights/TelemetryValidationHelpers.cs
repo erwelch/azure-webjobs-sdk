@@ -45,6 +45,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
         public static void ValidateRequest(
             RequestTelemetry request,
             string operationName,
+            string requestName,
             string operationId,
             string parentId,
             string category,
@@ -68,7 +69,10 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             {
                 Assert.Equal(parentId, request.Context.Operation.ParentId);
             }
+
             Assert.Equal(operationName, request.Context.Operation.Name);
+            Assert.Equal(requestName, request.Name);
+
             Assert.True(request.Properties.ContainsKey(LogConstants.InvocationIdKey));
             Assert.True(request.Properties.ContainsKey(LogConstants.TriggerReasonKey));
             Assert.StartsWith("webjobs:", request.Context.GetInternalContext().SdkVersion);
@@ -77,15 +81,6 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             Assert.Equal(statusCode, request.ResponseCode);
 
             Assert.DoesNotContain(request.Properties, p => p.Key == LogConstants.SucceededKey);
-
-            if (httpMethod != null)
-            {
-                Assert.Equal(httpMethod, request.Properties[LogConstants.HttpMethodKey]);
-            }
-            else
-            {
-                Assert.DoesNotContain(request.Properties, p => p.Key == LogConstants.HttpMethodKey);
-            }
         }
     }
 }
