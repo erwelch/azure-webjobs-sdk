@@ -51,8 +51,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             string category,
             LogLevel logLevel = LogLevel.Information,
             bool success = true,
-            string statusCode = "0",
-            string httpMethod = null)
+            string statusCode = "0")
 
         {
             Assert.Equal(category, request.Properties[LogConstants.CategoryNameKey]);
