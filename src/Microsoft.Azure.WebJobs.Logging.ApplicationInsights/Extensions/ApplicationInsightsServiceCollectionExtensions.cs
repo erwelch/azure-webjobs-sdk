@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Reflection.Metadata.Ecma335;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.AspNetCore;
 using Microsoft.ApplicationInsights.AspNetCore.Extensions;
@@ -16,10 +14,9 @@ using Microsoft.ApplicationInsights.Extensibility.Implementation;
 using Microsoft.ApplicationInsights.Extensibility.Implementation.ApplicationId;
 using Microsoft.ApplicationInsights.Extensibility.PerfCounterCollector.QuickPulse;
 using Microsoft.ApplicationInsights.SnapshotCollector;
-using Microsoft.ApplicationInsights.W3C;
+using Microsoft.ApplicationInsights.Extensibility.W3C;
 using Microsoft.ApplicationInsights.WindowsServer;
 using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel;
-using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -131,13 +128,11 @@ namespace Microsoft.Extensions.DependencyInjection
                         new WebJobsRoleEnvironmentTelemetryInitializer());
                     if (options.EnableW3CDistributedTracing)
                     {
-#pragma warning disable 612, 618
                         // W3C distributed tracing is enabled by the feature flag inside ApplicationInsights SDK
                         // W3COperationCorrelationTelemetryInitializer will go away once W3C is implemented
                         // in the DiagnosticSource (.NET)
 
                         TelemetryConfiguration.Active.TelemetryInitializers.Add(new W3COperationCorrelationTelemetryInitializer());
-#pragma warning restore 612, 618
                     }
                 }
 
@@ -220,12 +215,10 @@ namespace Microsoft.Extensions.DependencyInjection
 
             if (options.EnableW3CDistributedTracing)
             {
-#pragma warning disable 612, 618
                 // W3C distributed tracing is enabled by the feature flag inside ApplicationInsights SDK
                 // W3COperationCorrelationTelemetryInitializer will go away once W3C is implemented
                 // in the DiagnosticSource (.NET)
                 configuration.TelemetryInitializers.Add(new W3COperationCorrelationTelemetryInitializer());
-#pragma warning restore 612, 618
             }
 
             configuration.TelemetryChannel = channel;
