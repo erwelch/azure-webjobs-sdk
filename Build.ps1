@@ -32,7 +32,6 @@ foreach ($project in $projects)
   {
     $cmd += "--version-suffix", "-$packageSuffix"
   }
-  WRITE-HOST "dotnet $cmd"
   & dotnet $cmd  
 }
 
