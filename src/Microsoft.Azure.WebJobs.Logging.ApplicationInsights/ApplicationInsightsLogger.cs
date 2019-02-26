@@ -185,7 +185,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 telemetry.Properties[LogConstants.FormattedMessageKey] = formattedMessage;
 
                 // Also log a trace if there's a formattedMessage. This ensures that the error is visible
-                // in both App Insights analitycs tables.
+                // in both App Insights analytics tables.
                 LogTrace(logLevel, values, formattedMessage);
             }
 
