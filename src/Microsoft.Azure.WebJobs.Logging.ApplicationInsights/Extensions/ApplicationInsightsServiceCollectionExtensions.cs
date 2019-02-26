@@ -160,13 +160,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 }
             );
 
-            services.AddSingleton<ILoggerProvider, ApplicationInsightsLoggerProvider>(provider =>
-            {
-                TelemetryClient client = provider.GetService<TelemetryClient>();
-                ApplicationInsightsLoggerOptions options = provider.GetService<IOptions<ApplicationInsightsLoggerOptions>>().Value;
-
-                return new ApplicationInsightsLoggerProvider(client, options);
-            });
+            services.AddSingleton<ILoggerProvider, ApplicationInsightsLoggerProvider>();
 
             return services;
         }
