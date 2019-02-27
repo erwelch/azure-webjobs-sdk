@@ -110,7 +110,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 RequestTelemetry request = _channel.Telemetries
                     .OfType<RequestTelemetry>()
                     .Single();
-                ValidateRequest(request, testName, testName, true);
+                ValidateRequest(request, testName, testName, null, null, true);
 
                 // invocation id is retrievable from the request
                 request.Properties.TryGetValue(LogConstants.InvocationIdKey, out string invocationId);
@@ -167,7 +167,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 RequestTelemetry request = _channel.Telemetries
                     .OfType<RequestTelemetry>()
                     .Single();
-                ValidateRequest(request, testName, testName, false);
+                ValidateRequest(request, testName, testName, null, null, false);
 
                 // invocation id is retrievable from the request
                 request.Properties.TryGetValue(LogConstants.InvocationIdKey, out string invocationId);
@@ -345,9 +345,10 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 RequestTelemetry outerRequest = null;
 
                 // simulate auto tracked HTTP incoming call
-                using (IOperationHolder<RequestTelemetry> operation = telemetryClient.StartOperation<RequestTelemetry>("GET /"))
+                using (IOperationHolder<RequestTelemetry> operation = telemetryClient.StartOperation<RequestTelemetry>("GET /api/func-name"))
                 {
                     outerRequest = operation.Telemetry;
+                    outerRequest.Url = new Uri("http://my-func/api/func-name?name=123");
                     outerRequest.Success = true;
                     await host.GetJobHost().CallAsync(methodInfo, new { input = "input" });
                 }
@@ -365,7 +366,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 Assert.True(double.TryParse(functionRequest.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
                 Assert.True(functionRequest.Duration.TotalMilliseconds >= functionDuration);
 
-                ValidateRequest(functionRequest, testName, "GET /", true, "0");
+                ValidateRequest(functionRequest, testName, testName, "GET", "/api/func-name", true, "0");
             }
         }
 
@@ -403,7 +404,9 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 ValidateRequest(
                     functionRequest,
                     testName,
-                    "GET /some/path",
+                    testName,
+                    "GET",
+                    "/some/path",
                     success,
                     "204",
                     "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -459,7 +462,9 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                     ValidateRequest(
                         functionRequest,
                         testName,
-                        "GET /some/path",
+                        testName,
+                        "GET",
+                        "/some/path",
                         true,
                         "204",
                         "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -792,7 +797,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             ValidateSdkVersion(telemetry);
         }
 
-        private static void ValidateRequest(RequestTelemetry telemetry, string operationName, string name, bool success, string statusCode = "0",
+        private static void ValidateRequest(RequestTelemetry telemetry, string operationName, string name, string httpMethod, string requestPath, bool success, string statusCode = "0",
             string operationId = null, string parentId = null)
         {
             Assert.NotNull(telemetry.Context.Operation.Id);
@@ -801,6 +806,18 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             Assert.Equal(success, telemetry.Success);
 
             Assert.NotNull(telemetry.Properties[LogConstants.InvocationIdKey]);
+
+            if (httpMethod != null)
+            {
+                Assert.True(telemetry.Properties.TryGetValue(LogConstants.HttpMethodKey, out var actualHttpMethod));
+                Assert.Equal(httpMethod, actualHttpMethod);
+            }
+
+            if (requestPath != null)
+            {
+                Assert.True(telemetry.Properties.TryGetValue(LogConstants.HttpPathKey, out var actualHttpPath));
+                Assert.Equal(requestPath, actualHttpPath);
+            }
 
             Assert.Equal($"ApplicationInsightsEndToEndTests.{operationName}", telemetry.Properties[LogConstants.FullNameKey]);
             Assert.Equal("This function was programmatically called via the host APIs.", telemetry.Properties[LogConstants.TriggerReasonKey]);

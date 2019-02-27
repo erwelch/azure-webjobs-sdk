@@ -109,7 +109,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 TelemetryConfiguration config = TelemetryConfiguration.CreateDefault();
 
                 IApplicationIdProvider appIdProvider = provider.GetService<IApplicationIdProvider>();
-
+                ISdkVersionProvider sdkVersionProvider = provider.GetService<ISdkVersionProvider>();
                 // Because of https://github.com/Microsoft/ApplicationInsights-dotnet-server/issues/943
                 // we have to touch (and create) Active configuration before initializing telemetry modules
                 // Active configuration is used to report AppInsights heartbeats
@@ -124,8 +124,8 @@ namespace Microsoft.Extensions.DependencyInjection
 
                 if (!activeConfig.TelemetryInitializers.OfType<WebJobsRoleEnvironmentTelemetryInitializer>().Any())
                 {
-                    activeConfig.TelemetryInitializers.Add(
-                        new WebJobsRoleEnvironmentTelemetryInitializer());
+                    activeConfig.TelemetryInitializers.Add(new WebJobsRoleEnvironmentTelemetryInitializer());
+                    activeConfig.TelemetryInitializers.Add(new WebJobsTelemetryInitializer(sdkVersionProvider));
                     if (options.EnableW3CDistributedTracing)
                     {
                         // W3C distributed tracing is enabled by the feature flag inside ApplicationInsights SDK

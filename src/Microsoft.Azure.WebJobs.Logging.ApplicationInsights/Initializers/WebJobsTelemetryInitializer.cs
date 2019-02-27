@@ -140,6 +140,26 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             {
                 request.ResponseCode = "0";
             }
+
+            // If the Url is not null, it's an actual HttpRequest, as opposed to a
+            // Service Bus or other function invocation that we're tracking as a Request
+            if (request.Url != null)
+            {
+                if (!request.Properties.ContainsKey(LogConstants.HttpMethodKey))
+                {
+                    // App Insights sets request.Name as 'VERB /path'. We want to extract the VERB. 
+                    var verbEnd = request.Name.IndexOf(' ');
+                    if (verbEnd > 0)
+                    {
+                        request.Properties.Add(LogConstants.HttpMethodKey, request.Name.Substring(0, verbEnd));
+                    }
+                }
+
+                if (!request.Properties.ContainsKey(LogConstants.HttpPathKey))
+                {
+                    request.Properties.Add(LogConstants.HttpPathKey, request.Url.LocalPath);
+                }
+            }
         }
 
         /// <summary>
@@ -155,10 +175,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             if (property.Key == LogConstants.NameKey)
             {
                 request.Context.Operation.Name = property.Value;
-                if (string.IsNullOrEmpty(request.Name))
-                {
-                    request.Name = property.Value;
-                }
+                request.Name = property.Value;
 
                 wasPropertySet = true;
             }
