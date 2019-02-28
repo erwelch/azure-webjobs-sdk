@@ -31,7 +31,7 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
             {
                 Url = uri,
                 ResponseCode = status,
-                Name = "POST api/somemethod",
+                Name = "POST /api/somemethod",
             };
 
             Activity requestActivity = new Activity("dummy");
@@ -47,7 +47,14 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
             Assert.Equal(functionName, request.Context.Operation.Name);
             Assert.Equal(status, request.ResponseCode);
             Assert.Equal(true, request.Success);
-            Assert.Equal("POST api/somemethod", request.Name);
+            Assert.Equal(functionName, request.Name);
+
+            Assert.True(request.Properties.TryGetValue(LogConstants.HttpMethodKey, out var actualHttpMethod));
+            Assert.Equal("POST", actualHttpMethod);
+
+            Assert.True(request.Properties.TryGetValue(LogConstants.HttpPathKey, out var actualHttpPath));
+            Assert.Equal("/api/somemethod", actualHttpPath);
+
             Assert.DoesNotContain(request.Properties, p => p.Key == LogConstants.SucceededKey);
         }
 

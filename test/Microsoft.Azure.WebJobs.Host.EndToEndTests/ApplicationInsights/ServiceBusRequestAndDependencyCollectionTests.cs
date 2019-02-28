@@ -256,7 +256,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             Assert.True(double.TryParse(request.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
             Assert.True(request.Duration.TotalMilliseconds >= functionDuration);
 
-            TelemetryValidationHelpers.ValidateRequest(request, operationName, "Process", operationId, parentId, LogCategories.Results,
+            TelemetryValidationHelpers.ValidateRequest(request, operationName, operationName, operationId, parentId, LogCategories.Results,
                 success ? LogLevel.Information : LogLevel.Error, success);
         }
 

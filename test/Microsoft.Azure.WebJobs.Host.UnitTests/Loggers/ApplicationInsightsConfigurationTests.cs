@@ -251,11 +251,12 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 }).Build())
             {
                 // Verify Initializers
-                Assert.Equal(3, TelemetryConfiguration.Active.TelemetryInitializers.Count);
+                Assert.Equal(4, TelemetryConfiguration.Active.TelemetryInitializers.Count);
 
                 // These will throw if there are not exactly one
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<OperationCorrelationTelemetryInitializer>());
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsRoleEnvironmentTelemetryInitializer>());
+                Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsTelemetryInitializer>());
 
                 // ikey should still be set
                 Assert.Equal("some key", TelemetryConfiguration.Active.InstrumentationKey);
@@ -276,11 +277,12 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 }).Build())
             {
                 // Verify Initializers
-                Assert.Equal(3, TelemetryConfiguration.Active.TelemetryInitializers.Count);
+                Assert.Equal(4, TelemetryConfiguration.Active.TelemetryInitializers.Count);
 
                 // These will throw if there are not exactly one
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<OperationCorrelationTelemetryInitializer>());
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsRoleEnvironmentTelemetryInitializer>());
+                Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsTelemetryInitializer>());
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<W3COperationCorrelationTelemetryInitializer>());
             }
         }
@@ -311,11 +313,12 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 }).Build())
             {
                 // Verify Initializers
-                Assert.Equal(3, TelemetryConfiguration.Active.TelemetryInitializers.Count);
+                Assert.Equal(4, TelemetryConfiguration.Active.TelemetryInitializers.Count);
 
                 // These will throw if there are not exactly one
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<OperationCorrelationTelemetryInitializer>());
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsRoleEnvironmentTelemetryInitializer>());
+                Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsTelemetryInitializer>());
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<W3COperationCorrelationTelemetryInitializer>());
 
                 // ikey should still be set
