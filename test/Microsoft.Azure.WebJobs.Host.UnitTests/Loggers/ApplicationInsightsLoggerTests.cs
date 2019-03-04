@@ -713,6 +713,41 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
             Assert.Equal(options.SnapshotConfiguration.ThresholdForSnapshotting, deserializedOptions.SnapshotConfiguration.ThresholdForSnapshotting);
         }
 
+        [Fact]
+        public void ApplicationInsights_RequestIsTrackedIfActivityIsIgnored()
+        {
+            var result = CreateDefaultInstanceLogEntry();
+            var logger = CreateLogger(LogCategories.Results);
+
+            Activity parent = new Activity("foo").Start();
+            using (logger.BeginScope(new Dictionary<string, object> { ["MS_IgnoreActivity"] = null} ))
+            using (logger.BeginFunctionScope(CreateFunctionInstance(_invocationId), _hostInstanceId))
+            {
+                logger.LogFunctionResult(result);
+            }
+
+            Assert.Single(_channel.Telemetries.OfType<RequestTelemetry>());
+            RequestTelemetry telemetry = _channel.Telemetries.OfType<RequestTelemetry>().Single();
+
+            Assert.NotEqual(telemetry.Id, parent.Id);
+        }
+
+        [Fact]
+        public void ApplicationInsights_RequestIsNotTrackedIfActivityIsNotIgnored()
+        {
+            var result = CreateDefaultInstanceLogEntry();
+            var logger = CreateLogger(LogCategories.Results);
+
+            Activity parent = new Activity("foo").Start();
+            using (logger.BeginFunctionScope(CreateFunctionInstance(_invocationId), _hostInstanceId))
+            {
+                logger.LogFunctionResult(result);
+            }
+
+            // ApplicationInsights auto-tracks telemetry, functions do not track it.
+            Assert.Empty(_channel.Telemetries.OfType<RequestTelemetry>());
+        }
+
         private async Task Level1(Guid asyncLocalSetting)
         {
             // Push and pop values onto the dictionary at various levels. Make sure they
@@ -861,6 +896,11 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
         {
             _channel?.Dispose();
             _host?.Dispose();
+
+            while (Activity.Current != null)
+            {
+                Activity.Current.Stop();
+            }
         }
     }
 }

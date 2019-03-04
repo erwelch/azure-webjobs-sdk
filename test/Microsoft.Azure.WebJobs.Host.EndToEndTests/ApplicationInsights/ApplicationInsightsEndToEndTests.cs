@@ -28,6 +28,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights;
 using Microsoft.Azure.WebJobs.Host.TestCommon;
 using Microsoft.Azure.WebJobs.Logging;
+using Microsoft.Azure.WebJobs.Logging.ApplicationInsights;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
