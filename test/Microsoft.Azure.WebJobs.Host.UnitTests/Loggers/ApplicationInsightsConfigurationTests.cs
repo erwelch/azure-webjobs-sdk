@@ -255,6 +255,7 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
 
                 // These will throw if there are not exactly one
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<OperationCorrelationTelemetryInitializer>());
+                Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<W3COperationCorrelationTelemetryInitializer>());
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsRoleEnvironmentTelemetryInitializer>());
                 Assert.Single(TelemetryConfiguration.Active.TelemetryInitializers.OfType<WebJobsTelemetryInitializer>());
 

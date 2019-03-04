@@ -12,6 +12,8 @@ using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.ApplicationInsights.Extensibility.W3C;
+using Microsoft.ApplicationInsights.SnapshotCollector;
+using Microsoft.ApplicationInsights.WindowsServer.Channel.Implementation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.WebJobs.Host.Executors;
 using Microsoft.Azure.WebJobs.Host.Indexers;
@@ -23,6 +25,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Newtonsoft.Json;
 using Xunit;
 
 namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
@@ -636,6 +639,78 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
             }
 
             await Task.WhenAll(tasks);
+        }
+
+        [Fact]
+        public void ApplicationInsightsLoggerOptions_Format()
+        {
+            var options = new ApplicationInsightsLoggerOptions
+            {
+                SamplingSettings = new SamplingPercentageEstimatorSettings()
+                {
+                    EvaluationInterval = TimeSpan.FromHours(1),
+                    InitialSamplingPercentage = 0.1,
+                    MaxSamplingPercentage = 0.1,
+                    MaxTelemetryItemsPerSecond = 42,
+                    MinSamplingPercentage = 0.1,
+                    MovingAverageRatio = 1.0,
+                    SamplingPercentageDecreaseTimeout = TimeSpan.FromSeconds(1),
+                    SamplingPercentageIncreaseTimeout = TimeSpan.FromSeconds(1)
+                },
+                SnapshotConfiguration = new SnapshotCollectorConfiguration()
+                {
+                    AgentEndpoint = "123",
+                    FailedRequestLimit = 42,
+                    IsEnabled = false,
+                    IsEnabledInDeveloperMode = false,
+                    IsEnabledWhenProfiling = false,
+                    IsLowPrioritySnapshotUploader = false,
+                    MaximumCollectionPlanSize = 42,
+                    MaximumSnapshotsRequired = 42,
+                    ProblemCounterResetInterval = TimeSpan.FromMinutes(42),
+                    ProvideAnonymousTelemetry = false,
+                    ReconnectInterval = TimeSpan.FromMinutes(42),
+                    ShadowCopyFolder = "123",
+                    SnapshotInLowPriorityThread = false,
+                    SnapshotsPerDayLimit = 42,
+                    SnapshotsPerTenMinutesLimit = 42,
+                    TempFolder = "123",
+                    ThresholdForSnapshotting = 42,
+                    UploaderProxy = "123"
+                }
+            };
+
+            var deserializedOptions = JsonConvert.DeserializeObject<ApplicationInsightsLoggerOptions>(options.Format());
+
+            Assert.Equal(options.EnableW3CDistributedTracing, deserializedOptions.EnableW3CDistributedTracing);
+            Assert.Equal(options.EnableResponseHeaderInjection, deserializedOptions.EnableResponseHeaderInjection);
+
+            Assert.Equal(options.SamplingSettings.EvaluationInterval, deserializedOptions.SamplingSettings.EvaluationInterval);
+            Assert.Equal(options.SamplingSettings.InitialSamplingPercentage, deserializedOptions.SamplingSettings.InitialSamplingPercentage);
+            Assert.Equal(options.SamplingSettings.MaxSamplingPercentage, deserializedOptions.SamplingSettings.MaxSamplingPercentage);
+            Assert.Equal(options.SamplingSettings.MaxTelemetryItemsPerSecond, deserializedOptions.SamplingSettings.MaxTelemetryItemsPerSecond);
+            Assert.Equal(options.SamplingSettings.MinSamplingPercentage, deserializedOptions.SamplingSettings.MinSamplingPercentage);
+            Assert.Equal(options.SamplingSettings.MovingAverageRatio, deserializedOptions.SamplingSettings.MovingAverageRatio);
+            Assert.Equal(options.SamplingSettings.SamplingPercentageDecreaseTimeout, deserializedOptions.SamplingSettings.SamplingPercentageDecreaseTimeout);
+            Assert.Equal(options.SamplingSettings.SamplingPercentageIncreaseTimeout, deserializedOptions.SamplingSettings.SamplingPercentageIncreaseTimeout);
+
+
+            Assert.Equal(options.SnapshotConfiguration.FailedRequestLimit, deserializedOptions.SnapshotConfiguration.FailedRequestLimit);
+            Assert.Equal(options.SnapshotConfiguration.IsEnabled, deserializedOptions.SnapshotConfiguration.IsEnabled);
+            Assert.Equal(options.SnapshotConfiguration.IsEnabledInDeveloperMode, deserializedOptions.SnapshotConfiguration.IsEnabledInDeveloperMode);
+            Assert.Equal(options.SnapshotConfiguration.IsEnabledWhenProfiling, deserializedOptions.SnapshotConfiguration.IsEnabledWhenProfiling);
+            Assert.Equal(options.SnapshotConfiguration.IsLowPrioritySnapshotUploader, deserializedOptions.SnapshotConfiguration.IsLowPrioritySnapshotUploader);
+            Assert.Equal(options.SnapshotConfiguration.MaximumCollectionPlanSize, deserializedOptions.SnapshotConfiguration.MaximumCollectionPlanSize);
+            Assert.Equal(options.SnapshotConfiguration.MaximumSnapshotsRequired, deserializedOptions.SnapshotConfiguration.MaximumSnapshotsRequired);
+            Assert.Equal(options.SnapshotConfiguration.ProblemCounterResetInterval, deserializedOptions.SnapshotConfiguration.ProblemCounterResetInterval);
+            Assert.Equal(options.SnapshotConfiguration.ProvideAnonymousTelemetry, deserializedOptions.SnapshotConfiguration.ProvideAnonymousTelemetry);
+            Assert.Equal(options.SnapshotConfiguration.ReconnectInterval, deserializedOptions.SnapshotConfiguration.ReconnectInterval);
+            Assert.Equal(options.SnapshotConfiguration.ShadowCopyFolder, deserializedOptions.SnapshotConfiguration.ShadowCopyFolder);
+            Assert.Equal(options.SnapshotConfiguration.SnapshotInLowPriorityThread, deserializedOptions.SnapshotConfiguration.SnapshotInLowPriorityThread);
+            Assert.Equal(options.SnapshotConfiguration.SnapshotsPerDayLimit, deserializedOptions.SnapshotConfiguration.SnapshotsPerDayLimit);
+            Assert.Equal(options.SnapshotConfiguration.SnapshotsPerTenMinutesLimit, deserializedOptions.SnapshotConfiguration.SnapshotsPerTenMinutesLimit);
+            Assert.Equal(options.SnapshotConfiguration.TempFolder, deserializedOptions.SnapshotConfiguration.TempFolder);
+            Assert.Equal(options.SnapshotConfiguration.ThresholdForSnapshotting, deserializedOptions.SnapshotConfiguration.ThresholdForSnapshotting);
         }
 
         private async Task Level1(Guid asyncLocalSetting)

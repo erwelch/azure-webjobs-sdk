@@ -89,7 +89,9 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             JObject options = new JObject
             {
                 { nameof(SamplingSettings), sampling },
-                { nameof(SnapshotConfiguration), snapshot }
+                { nameof(SnapshotConfiguration), snapshot },
+                { nameof(EnableW3CDistributedTracing), EnableW3CDistributedTracing},
+                { nameof(EnableResponseHeaderInjection), EnableResponseHeaderInjection}
             };
 
             return options.ToString(Formatting.Indented);
