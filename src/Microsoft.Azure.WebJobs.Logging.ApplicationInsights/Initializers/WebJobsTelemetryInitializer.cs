@@ -159,6 +159,9 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 {
                     request.Properties.Add(LogConstants.HttpPathKey, request.Url.LocalPath);
                 }
+
+                // sanitize request Url - remove query string
+                request.Url = new Uri(request.Url.GetLeftPart(UriPartial.Path));
             }
         }
 
