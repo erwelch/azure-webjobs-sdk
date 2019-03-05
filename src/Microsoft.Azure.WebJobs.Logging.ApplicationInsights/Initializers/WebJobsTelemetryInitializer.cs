@@ -190,6 +190,10 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 // Remove the Succeeded property as it's duplicated
                 request.Properties.Remove(LogConstants.SucceededKey);
             }
+            else if (property.Key == LoggingConstants.ClientIpKey)
+            {
+                request.Context.Location.Ip = property.Value;
+            }
 
             return wasPropertySet;
         }

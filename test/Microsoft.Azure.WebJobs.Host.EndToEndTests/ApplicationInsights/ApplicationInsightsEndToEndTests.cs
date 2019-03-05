@@ -366,7 +366,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
 
                 Assert.True(double.TryParse(functionRequest.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
                 Assert.True(functionRequest.Duration.TotalMilliseconds >= functionDuration);
-
+                Assert.Equal("0.0.0.0", functionRequest.Context.Location.Ip);
                 ValidateRequest(functionRequest, testName, testName, "GET", "/api/func-name", true, "0");
             }
         }
@@ -383,10 +383,20 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 Startup.Host = host;
                 await host.StartAsync();
 
+                var loggerProvider = host.Services.GetServices<ILoggerProvider>().OfType<ApplicationInsightsLoggerProvider>().Single();
+                var logger = loggerProvider.CreateLogger(LogCategories.Results);
+
                 var request = new HttpRequestMessage(HttpMethod.Get, $"/some/path?name={testName}");
                 request.Headers.Add("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
 
-                await client.SendAsync(request);
+                var mockHttpContext = new DefaultHttpContext();
+                mockHttpContext.Connection.RemoteIpAddress = new IPAddress(new byte[] {1, 2, 3, 4});
+
+                // simulate functions behavior to set request on the scope
+                using (var _ = logger.BeginScope(new Dictionary<string, object> { ["MS_HttpRequest"] = mockHttpContext.Request}))
+                {
+                    await client.SendAsync(request);
+                }
 
                 await host.StopAsync();
 
@@ -402,6 +412,8 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
 
                 Assert.True(double.TryParse(functionRequest.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
                 Assert.True(functionRequest.Duration.TotalMilliseconds >= functionDuration);
+                Assert.Equal("1.2.3.4", functionRequest.Context.Location.Ip);
+
                 ValidateRequest(
                     functionRequest,
                     testName,
@@ -413,6 +425,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                     "4bf92f3577b34da6a3ce929d0e0e4736",
                     "|4bf92f3577b34da6a3ce929d0e0e4736.00f067aa0ba902b7.");
 
+                Assert.DoesNotContain("MS_HttpRequest", functionRequest.Properties.Keys);
                 // Make sure operation ids match
                 var traces = _channel.Telemetries.OfType<TraceTelemetry>()
                     .Where(t => t.Context.Operation.Id == functionRequest.Context.Operation.Id);
@@ -917,7 +930,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
 
                     try
                     {
-                        await Host.GetJobHost().CallAsync(methodInfo, new { input = "input" });
+                        await Host.GetJobHost().CallAsync(methodInfo, new {input = "input"});
                     }
                     catch
                     {

@@ -38,6 +38,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 LogConstants.LogLevelKey,
                 LogConstants.EventIdKey,
                 LogConstants.OriginalFormatKey,
+                ApplicationInsightsScopeKeys.HttpRequest,
                 ScopeKeys.Event,
                 ScopeKeys.FunctionInvocationId,
                 ScopeKeys.FunctionName,
@@ -68,7 +69,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
             // Initialize stateValues so the rest of the methods don't have to worry about null values.
             stateValues = stateValues ?? new Dictionary<string, object>();
 
-            // Add some well-known properties to the scope dictionary so the TelemetryIniitalizer can add them
+            // Add some well-known properties to the scope dictionary so the TelemetryInitializer can add them
             // for all telemetry.
             using (BeginScope(new Dictionary<string, object>
             {
@@ -391,6 +392,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                             break;
                     }
                 }
+
                 if (scope.TryGetValue(LogConstants.CategoryNameKey, out object category))
                 {
                     currentActivity.AddTag(LogConstants.CategoryNameKey, category.ToString());
@@ -399,6 +401,11 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 if (scope.TryGetValue(LogConstants.LogLevelKey, out object logLevel))
                 {
                     currentActivity.AddTag(LogConstants.LogLevelKey, logLevel.ToString());
+                }
+
+                if (scope.TryGetValue(ApplicationInsightsScopeKeys.HttpRequest, out var request) && request is HttpRequest httpRequest)
+                {
+                    currentActivity.AddTag(LoggingConstants.ClientIpKey, GetIpAddress(httpRequest));
                 }
             }
         }
