@@ -25,6 +25,8 @@ namespace Microsoft.Azure.WebJobs.Host.Queues
     internal static class QueueCausalityManager
     {
         private const string ParentGuidFieldName = "$AzureWebJobsParentId";
+        private const string TraceparentFieldName = "$AzureWebJobsTraceparent";
+        private const string TracestateFieldName = "$AzureWebJobsTracestate";
 
         public static void SetOwner(Guid functionOwner, JObject token)
         {
@@ -37,6 +39,58 @@ namespace Microsoft.Azure.WebJobs.Host.Queues
             {
                 token[ParentGuidFieldName] = functionOwner.ToString();
             }
+        }
+
+        public static void SetTraceContext(string traceparent, string tracestate, JObject token)
+        {
+            if (token == null)
+            {
+                throw new ArgumentNullException("token");
+            }
+
+            if (!string.IsNullOrEmpty(traceparent))
+            {
+                token[TraceparentFieldName] = traceparent;
+
+                if (!string.IsNullOrEmpty(tracestate))
+                {
+                    token[TracestateFieldName] = tracestate;
+                }
+            }
+        }
+
+        [DebuggerNonUserCode]
+        public static (string traceparent, string tracestate) GetTraceContext(CloudQueueMessage msg)
+        {
+            string text = msg.TryGetAsString();
+
+            if (text == null)
+            {
+                return (null, null);
+            }
+
+            IDictionary<string, JToken> json;
+            try
+            {
+                json = JsonSerialization.ParseJObject(text);
+            }
+            catch (Exception)
+            {
+                return (null, null);
+            }
+
+            if (json == null || !json.ContainsKey(TraceparentFieldName) || json[TraceparentFieldName].Type != JTokenType.String)
+            {
+                return (null, null);
+            }
+
+            string tracestate = null;
+            if (json.ContainsKey(TracestateFieldName) && json[TracestateFieldName].Type == JTokenType.String)
+            {
+                tracestate = (string)json[TracestateFieldName];
+            }
+
+            return ((string)json[TraceparentFieldName], tracestate);
         }
 
         [DebuggerNonUserCode]

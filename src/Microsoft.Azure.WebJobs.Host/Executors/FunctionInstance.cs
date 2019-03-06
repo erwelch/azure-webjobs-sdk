@@ -9,7 +9,7 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
 {
     internal class FunctionInstance : IFunctionInstance
     {
-        public FunctionInstance(Guid id, IDictionary<string, string> triggerDetails, Guid? parentId, ExecutionReason reason, IBindingSource bindingSource,
+        public FunctionInstance(Guid id, IDictionary<string, string> triggerDetails, Guid? parentId, string traceparent, string tracestate, ExecutionReason reason, IBindingSource bindingSource,
             IFunctionInvoker invoker, FunctionDescriptor functionDescriptor)
         {
             Id = id;
@@ -19,6 +19,8 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
             BindingSource = bindingSource;
             Invoker = invoker;
             FunctionDescriptor = functionDescriptor;
+            Traceparent = traceparent;
+            Tracestate = tracestate;
         }
 
         public Guid Id { get; }
@@ -28,6 +30,10 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
         public Guid? ParentId { get; }
 
         public ExecutionReason Reason { get; }
+
+        public string Traceparent { get; set; }
+
+        public string Tracestate { get; set; }
 
         public IBindingSource BindingSource { get; }
 

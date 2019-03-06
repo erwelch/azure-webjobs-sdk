@@ -36,6 +36,8 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
             {
                 TriggerValue = (TTriggerValue)input.TriggerValue,
                 ParentId = input.ParentId,
+                Traceparent = input.Traceparent,
+                Tracestate = input.Tracestate,
                 TriggerDetails = input.TriggerDetails
             };
 

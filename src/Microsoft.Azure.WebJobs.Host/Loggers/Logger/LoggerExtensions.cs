@@ -67,6 +67,8 @@ namespace Microsoft.Extensions.Logging
                     [ScopeKeys.FunctionInvocationId] = functionInstance?.Id.ToString(),
                     [ScopeKeys.FunctionName] = functionInstance?.FunctionDescriptor?.LogName,
                     [ScopeKeys.Event] = LogConstants.FunctionStartEvent,
+                    [ScopeKeys.Traceparent] = functionInstance?.Traceparent,
+                    [ScopeKeys.Tracestate] = functionInstance?.Tracestate,
                     [ScopeKeys.HostInstanceId] = hostInstanceId.ToString()
                 });
         }
