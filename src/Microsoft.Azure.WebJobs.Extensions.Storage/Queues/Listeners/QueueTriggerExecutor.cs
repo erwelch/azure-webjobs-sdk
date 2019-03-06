@@ -23,9 +23,13 @@ namespace Microsoft.Azure.WebJobs.Host.Queues.Listeners
         public async Task<FunctionResult> ExecuteAsync(CloudQueueMessage value, CancellationToken cancellationToken)
         {
             Guid? parentId = QueueCausalityManager.GetOwner(value);
+
+            (string traceparent, string tracestate) = QueueCausalityManager.GetTraceContext(value);
             TriggeredFunctionData input = new TriggeredFunctionData
             {
                 ParentId = parentId,
+                Traceparent = traceparent,
+                Tracestate = tracestate,
                 TriggerValue = value, 
                 TriggerDetails = PopulateTriggerDetails(value)
             };

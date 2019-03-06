@@ -467,7 +467,20 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                         // legacy and W3C, they both appear in telemetry. UX handles all differences in operation Ids. 
                         // This will be resolved in next .NET SDK on Activity level.
                         // This ensures W3C context is set on the Activity.
-                        Activity.Current?.GenerateW3CContext();
+                        string traceparent = stateValues.GetValueOrDefault<string>(ScopeKeys.Traceparent);
+                        if (!string.IsNullOrEmpty(traceparent))
+                        {
+                            Activity.Current?.SetTraceparent(traceparent);
+                            string tracestate = stateValues.GetValueOrDefault<string>(ScopeKeys.Tracestate);
+                            if (!string.IsNullOrEmpty(tracestate))
+                            {
+                                Activity.Current?.SetTracestate(tracestate);
+                            }
+                        }
+                        else
+                        {
+                            Activity.Current?.GenerateW3CContext();
+                        }
                     }
 
                     stateValues[OperationContext] = operation;

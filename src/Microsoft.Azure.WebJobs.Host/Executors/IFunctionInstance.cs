@@ -14,6 +14,8 @@ namespace Microsoft.Azure.WebJobs.Host.Executors
         IDictionary<string, string> TriggerDetails { get; }
 
         Guid? ParentId { get; }
+        string Traceparent { get; }
+        string Tracestate { get; }
 
         ExecutionReason Reason { get; }
 

@@ -2,7 +2,9 @@
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -110,6 +112,36 @@ namespace Microsoft.Azure.WebJobs.Host.Queues.Config
                 JObject objectToken = JObject.FromObject(input, JsonSerialization.Serializer);
                 var functionInstanceId = context.FunctionInstanceId;
                 QueueCausalityManager.SetOwner(functionInstanceId, objectToken);
+
+                var currentActivity = Activity.Current;
+                if (currentActivity != null)
+                {
+                    // this will improve after W3C support is moved to System.Diagnostics.Activity
+                    string traceid = null;
+                    string spanid = null;
+                    var traceIds = currentActivity.Tags.Where(t => t.Key == "w3c_traceId").ToArray();
+                    var spanIds = currentActivity.Tags.Where(t => t.Key == "w3c_spanId").ToArray();
+                    if (traceIds.Any() && spanIds.Any())
+                    {
+                        traceid = traceIds.First().Value;
+                        spanid = spanIds.First().Value;
+                    }
+                    else
+                    {
+                        traceid = Guid.NewGuid().ToString("n");
+                        spanid = Guid.NewGuid().ToString("n").Substring(0, 16);
+                    }
+
+                    string tracestate = null;
+                    var tracestates = currentActivity.Tags.Where(t => t.Key == "w3c_tracestate").ToArray();
+                    if (tracestates.Any())
+                    {
+                        tracestate = tracestates.First().Value;
+                    }
+
+                    // TODO: get version and sampled flags from AI tags
+                    QueueCausalityManager.SetTraceContext($"00-{traceid}-{spanid}-01", tracestate, objectToken);
+                }
 
                 return Task.FromResult<JObject>(objectToken);
             }
