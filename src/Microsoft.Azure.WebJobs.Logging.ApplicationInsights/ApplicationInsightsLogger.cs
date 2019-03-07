@@ -461,7 +461,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                     // We'll need to store this operation context so we can stop it when the function completes
                     IOperationHolder<RequestTelemetry> operation = _telemetryClient.StartOperation(request);
 
-                    if (_loggerOptions.EnableW3CDistributedTracing)
+                    if (_loggerOptions.HttpAutoCollectionOptions.EnableW3CDistributedTracing)
                     {
                         // currently ApplicationInsights supports 2 parallel correlation schemes:
                         // legacy and W3C, they both appear in telemetry. UX handles all differences in operation Ids. 

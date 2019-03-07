@@ -677,13 +677,20 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                     TempFolder = "123",
                     ThresholdForSnapshotting = 42,
                     UploaderProxy = "123"
+                },
+                HttpAutoCollectionOptions = new HttpAutoCollectionOptions()
+                {
+                    EnableResponseHeaderInjection = false,
+                    EnableW3CDistributedTracing = false,
+                    CollectExtendedHttpTriggerInformation = true
                 }
             };
 
             var deserializedOptions = JsonConvert.DeserializeObject<ApplicationInsightsLoggerOptions>(options.Format());
 
-            Assert.Equal(options.EnableW3CDistributedTracing, deserializedOptions.EnableW3CDistributedTracing);
-            Assert.Equal(options.EnableResponseHeaderInjection, deserializedOptions.EnableResponseHeaderInjection);
+            Assert.Equal(options.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation, deserializedOptions.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation);
+            Assert.Equal(options.HttpAutoCollectionOptions.EnableW3CDistributedTracing, deserializedOptions.HttpAutoCollectionOptions.EnableW3CDistributedTracing);
+            Assert.Equal(options.HttpAutoCollectionOptions.EnableResponseHeaderInjection, deserializedOptions.HttpAutoCollectionOptions.EnableResponseHeaderInjection);
 
             Assert.Equal(options.SamplingSettings.EvaluationInterval, deserializedOptions.SamplingSettings.EvaluationInterval);
             Assert.Equal(options.SamplingSettings.InitialSamplingPercentage, deserializedOptions.SamplingSettings.InitialSamplingPercentage);
@@ -857,15 +864,6 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
             var descriptor = FunctionIndexer.FromMethod(method);
 
             return new FunctionInstance(id, new Dictionary<string, string>(), null, new ExecutionReason(), null, null, descriptor);
-        }
-
-        private static IDictionary<string, object> CreateScopeDictionary(string invocationId, string functionName)
-        {
-            return new Dictionary<string, object>
-            {
-                [ScopeKeys.FunctionInvocationId] = invocationId,
-                [ScopeKeys.FunctionName] = functionName
-            };
         }
 
         private static void TestFunction()

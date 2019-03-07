@@ -82,15 +82,13 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
 
                 Assert.Single(modules.OfType<QuickPulseTelemetryModule>());
                 Assert.Single(modules.OfType<AppServicesHeartbeatTelemetryModule>());
-                Assert.Single(modules.OfType<RequestTrackingTelemetryModule>());
+                Assert.Empty(modules.OfType<RequestTrackingTelemetryModule>());
 
                 var dependencyModule = modules.OfType<DependencyTrackingTelemetryModule>().Single();
-                var requestModule = modules.OfType<RequestTrackingTelemetryModule>().Single();
+                var requestModules = modules.OfType<RequestTrackingTelemetryModule>();
+                Assert.Empty(requestModules);
 
                 Assert.True(dependencyModule.EnableW3CHeadersInjection);
-                Assert.True(requestModule.CollectionOptions.EnableW3CDistributedTracing);
-                Assert.True(requestModule.CollectionOptions.InjectResponseHeaders);
-                Assert.False(requestModule.CollectionOptions.TrackExceptions);
 
                 Assert.Same(config.TelemetryChannel, host.Services.GetServices<ITelemetryChannel>().Single());
                 // Verify client
@@ -153,8 +151,34 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                     b.AddApplicationInsights(o =>
                     {
                         o.InstrumentationKey = "some key";
-                        o.EnableW3CDistributedTracing = false;
-                        o.EnableResponseHeaderInjection = false;
+                        o.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation = true;
+                    });
+                })
+                .Build())
+            {
+                var modules = host.Services.GetServices<ITelemetryModule>().ToList();
+                var dependencyModule = modules.OfType<DependencyTrackingTelemetryModule>().Single();
+                var requestModule = modules.OfType<RequestTrackingTelemetryModule>().Single();
+
+                Assert.True(dependencyModule.EnableW3CHeadersInjection);
+                Assert.True(requestModule.CollectionOptions.EnableW3CDistributedTracing);
+                Assert.True(requestModule.CollectionOptions.InjectResponseHeaders);
+                Assert.False(requestModule.CollectionOptions.TrackExceptions);
+            }
+        }
+
+        [Fact]
+        public void DependencyInjectionConfiguration_ConfiguresCustomRequestCollectionOptions()
+        {
+            using (var host = new HostBuilder()
+                .ConfigureLogging(b =>
+                {
+                    b.AddApplicationInsights(o =>
+                    {
+                        o.InstrumentationKey = "some key";
+                        o.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation = true;
+                        o.HttpAutoCollectionOptions.EnableW3CDistributedTracing = false;
+                        o.HttpAutoCollectionOptions.EnableResponseHeaderInjection = false;
                     });
                 })
                 .Build())
@@ -167,6 +191,28 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 Assert.False(requestModule.CollectionOptions.EnableW3CDistributedTracing);
                 Assert.False(requestModule.CollectionOptions.InjectResponseHeaders);
                 Assert.False(requestModule.CollectionOptions.TrackExceptions);
+            }
+        }
+
+        [Fact]
+        public void DependencyInjectionConfiguration_ConfiguresDefaultRequestCollectionOptions()
+        {
+            using (var host = new HostBuilder()
+                .ConfigureLogging(b =>
+                {
+                    b.AddApplicationInsights(o =>
+                    {
+                        o.InstrumentationKey = "some key";
+                    });
+                })
+                .Build())
+            {
+                var modules = host.Services.GetServices<ITelemetryModule>().ToList();
+                var dependencyModule = modules.OfType<DependencyTrackingTelemetryModule>().Single();
+                var requestModules = modules.OfType<RequestTrackingTelemetryModule>();
+
+                Assert.True(dependencyModule.EnableW3CHeadersInjection);
+                Assert.Empty(requestModules);
             }
         }
 

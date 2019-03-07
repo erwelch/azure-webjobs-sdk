@@ -74,27 +74,29 @@ namespace Microsoft.Extensions.DependencyInjection
                 var includedActivities = dependencyCollector.IncludeDiagnosticSourceActivities;
                 includedActivities.Add("Microsoft.Azure.ServiceBus");
 
-                dependencyCollector.EnableW3CHeadersInjection = options.EnableW3CDistributedTracing;
+                dependencyCollector.EnableW3CHeadersInjection = options.HttpAutoCollectionOptions.EnableW3CDistributedTracing;
                 return dependencyCollector;
             });
 
-            services.AddSingleton<ITelemetryModule, RequestTrackingTelemetryModule>(provider =>
+            services.AddSingleton<ITelemetryModule>(provider =>
             {
                 var options = provider.GetService<IOptions<ApplicationInsightsLoggerOptions>>().Value;
-                var appIdProvider = provider.GetService<IApplicationIdProvider>();
+                if (options.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation)
+                {
+                    var appIdProvider = provider.GetService<IApplicationIdProvider>();
 
-                var requestCollector =
-                    new RequestTrackingTelemetryModule(appIdProvider)
+                    return new RequestTrackingTelemetryModule(appIdProvider)
                     {
                         CollectionOptions = new RequestCollectionOptions
                         {
                             TrackExceptions = false, // webjobs/functions track exceptions themselves
-                            EnableW3CDistributedTracing = options.EnableW3CDistributedTracing,
-                            InjectResponseHeaders = options.EnableResponseHeaderInjection
+                            EnableW3CDistributedTracing = options.HttpAutoCollectionOptions.EnableW3CDistributedTracing,
+                            InjectResponseHeaders = options.HttpAutoCollectionOptions.EnableResponseHeaderInjection
                         }
                     };
+                }
 
-                return requestCollector;
+                return new NoopTelemetryModule<RequestTrackingTelemetryModule>();
             });
 
             services.AddSingleton<ITelemetryModule, AppServicesHeartbeatTelemetryModule>();
@@ -126,7 +128,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 {
                     activeConfig.TelemetryInitializers.Add(new WebJobsRoleEnvironmentTelemetryInitializer());
                     activeConfig.TelemetryInitializers.Add(new WebJobsTelemetryInitializer(sdkVersionProvider));
-                    if (options.EnableW3CDistributedTracing)
+                    if (options.HttpAutoCollectionOptions.EnableW3CDistributedTracing)
                     {
                         // W3C distributed tracing is enabled by the feature flag inside ApplicationInsights SDK
                         // W3COperationCorrelationTelemetryInitializer will go away once W3C is implemented
@@ -207,7 +209,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 configuration.InstrumentationKey = options.InstrumentationKey;
             }
 
-            if (options.EnableW3CDistributedTracing)
+            if (options.HttpAutoCollectionOptions.EnableW3CDistributedTracing)
             {
                 // W3C distributed tracing is enabled by the feature flag inside ApplicationInsights SDK
                 // W3COperationCorrelationTelemetryInitializer will go away once W3C is implemented

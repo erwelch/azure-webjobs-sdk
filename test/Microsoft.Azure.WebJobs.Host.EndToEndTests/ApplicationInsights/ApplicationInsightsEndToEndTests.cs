@@ -59,8 +59,13 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             _factory = factory;
         }
 
-        private IHost ConfigureHost(LogLevel minLevel = LogLevel.Information)
+        private IHost ConfigureHost(LogLevel minLevel = LogLevel.Information, HttpAutoCollectionOptions httpOptions = null)
         {
+            if (httpOptions == null)
+            {
+                httpOptions = new HttpAutoCollectionOptions();
+            }
+
             IHost host = new HostBuilder()
                 .ConfigureDefaultTestHost<ApplicationInsightsEndToEndTests>()
                 .ConfigureServices(services =>
@@ -73,7 +78,11 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 .ConfigureLogging(b =>
                 {
                     b.SetMinimumLevel(minLevel);
-                    b.AddApplicationInsights(o => o.InstrumentationKey = _mockApplicationInsightsKey);
+                    b.AddApplicationInsights(o =>
+                    {
+                        o.InstrumentationKey = _mockApplicationInsightsKey;
+                        o.HttpAutoCollectionOptions = httpOptions;
+                    });
                 })
                 .ConfigureServices(services =>
                 {
@@ -346,7 +355,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 RequestTelemetry outerRequest = null;
 
                 // simulate auto tracked HTTP incoming call
-                using (IOperationHolder<RequestTelemetry> operation = telemetryClient.StartOperation<RequestTelemetry>("GET /api/func-name"))
+                using (IOperationHolder<RequestTelemetry> operation = telemetryClient.StartOperation<RequestTelemetry>("request name"))
                 {
                     outerRequest = operation.Telemetry;
                     outerRequest.Url = new Uri("http://my-func/api/func-name?name=123");
@@ -374,11 +383,76 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
         [Theory]
         [InlineData(nameof(TestApplicationInsightsInformation), true)]
         [InlineData(nameof(TestApplicationInsightsFailure), false)]
-        public async Task ApplicationInsights_HttpRequestTracking(string testName, bool success)
+        public async Task ApplicationInsights_HttpRequestTrackingByWebJobs(string testName, bool success)
         {
             var client = _factory.CreateClient();
 
             using (IHost host = ConfigureHost())
+            {
+                Startup.Host = host;
+                await host.StartAsync();
+
+                var loggerProvider = host.Services.GetServices<ILoggerProvider>().OfType<ApplicationInsightsLoggerProvider>().Single();
+                var logger = loggerProvider.CreateLogger(LogCategories.Results);
+
+                var request = new HttpRequestMessage(HttpMethod.Get, $"/some/path?name={testName}");
+                request.Headers.Add("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+
+                var mockHttpContext = new DefaultHttpContext();
+                mockHttpContext.Connection.RemoteIpAddress = new IPAddress(new byte[] { 1, 2, 3, 4 });
+
+                // simulate functions behavior to set request on the scope
+                using (var _ = logger.BeginScope(new Dictionary<string, object> { ["MS_HttpRequest"] = mockHttpContext.Request }))
+                {
+                    await client.SendAsync(request);
+                }
+
+                await host.StopAsync();
+
+                // Validate the request
+                // There must be only one reported by the AppInsights request collector
+                // The telemetry may come back slightly later, so wait until we see it
+                RequestTelemetry functionRequest = null;
+                await TestHelpers.Await(() =>
+                {
+                    functionRequest = _channel.Telemetries.OfType<RequestTelemetry>().SingleOrDefault();
+                    return functionRequest != null;
+                });
+
+                Assert.True(double.TryParse(functionRequest.Properties[LogConstants.FunctionExecutionTimeKey], out double functionDuration));
+                Assert.True(functionRequest.Duration.TotalMilliseconds >= functionDuration);
+                Assert.Equal("1.2.3.4", functionRequest.Context.Location.Ip);
+                Assert.Null(functionRequest.Url);
+
+                ValidateRequest(
+                    functionRequest,
+                    testName,
+                    testName,
+                    null,
+                    null,
+                    success);
+
+                Assert.DoesNotContain("MS_HttpRequest", functionRequest.Properties.Keys);
+                // Make sure operation ids match
+                var traces = _channel.Telemetries.OfType<TraceTelemetry>()
+                    .Where(t => t.Context.Operation.Id == functionRequest.Context.Operation.Id);
+                Assert.Equal(success ? 4 : 5, traces.Count());
+            }
+        }
+
+        [Theory]
+        [InlineData(nameof(TestApplicationInsightsInformation), true)]
+        [InlineData(nameof(TestApplicationInsightsFailure), false)]
+        public async Task ApplicationInsights_HttpRequestTrackingByAIAutoCollector(string testName, bool success)
+        {
+            var client = _factory.CreateClient();
+
+            var httpOptions = new HttpAutoCollectionOptions
+            {
+                CollectExtendedHttpTriggerInformation = true
+            };
+
+            using (IHost host = ConfigureHost(httpOptions: httpOptions))
             {
                 Startup.Host = host;
                 await host.StartAsync();
@@ -443,10 +517,15 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
 
             var client = _factory.CreateClient();
 
-            // Create two hosts to simulate.
-            using (IHost host1 = ConfigureHost())
+            var httpOptions = new HttpAutoCollectionOptions
             {
-                using (IHost host2 = ConfigureHost())
+                CollectExtendedHttpTriggerInformation = true
+            };
+
+            // Create two hosts to simulate.
+            using (IHost host1 = ConfigureHost(httpOptions: httpOptions))
+            {
+                using (IHost host2 = ConfigureHost(httpOptions: httpOptions))
                 {
                     Startup.Host = host2;
                     await host1.StartAsync();
@@ -821,18 +900,6 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             Assert.Equal(success, telemetry.Success);
 
             Assert.NotNull(telemetry.Properties[LogConstants.InvocationIdKey]);
-
-            if (httpMethod != null)
-            {
-                Assert.True(telemetry.Properties.TryGetValue(LogConstants.HttpMethodKey, out var actualHttpMethod));
-                Assert.Equal(httpMethod, actualHttpMethod);
-            }
-
-            if (requestPath != null)
-            {
-                Assert.True(telemetry.Properties.TryGetValue(LogConstants.HttpPathKey, out var actualHttpPath));
-                Assert.Equal(requestPath, actualHttpPath);
-            }
 
             Assert.Equal($"ApplicationInsightsEndToEndTests.{operationName}", telemetry.Properties[LogConstants.FullNameKey]);
             Assert.Equal("This function was programmatically called via the host APIs.", telemetry.Properties[LogConstants.TriggerReasonKey]);

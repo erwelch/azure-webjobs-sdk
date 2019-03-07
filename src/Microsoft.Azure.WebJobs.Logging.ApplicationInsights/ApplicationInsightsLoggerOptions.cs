@@ -32,18 +32,12 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
         public string QuickPulseAuthenticationApiKey { get; set; }
 
         /// <summary>
-        /// Gets or sets flag that enables support of W3C distributed tracing protocol
-        /// (and turns on legacy correlation schema).  Enabled by default.
+        /// Gets or sets HTTP request collection options. 
         /// </summary>
-        public bool EnableW3CDistributedTracing { get; set; } = true;
+        public HttpAutoCollectionOptions HttpAutoCollectionOptions { get; set; } = new HttpAutoCollectionOptions();
 
-        /// <summary>
-        /// Gets or sets a flag that enables injection of multi-component correlation headers into responses.
-        /// This allows Application Insights to construct an Application Map to  when several
-        /// instrumentation keys are used.  Disabled by default.
-        /// </summary>
-        public bool EnableResponseHeaderInjection { get; set; } = true;
 
+        public bool EnableDependencyCollection = false;
         public string Format()
         {
             JObject sampling = null;
@@ -86,12 +80,18 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 };
             }
 
+            JObject httpOptions = new JObject
+            {
+                { nameof(HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation), HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation },
+                { nameof(HttpAutoCollectionOptions.EnableW3CDistributedTracing), HttpAutoCollectionOptions.EnableW3CDistributedTracing },
+                { nameof(HttpAutoCollectionOptions.EnableResponseHeaderInjection), HttpAutoCollectionOptions.EnableResponseHeaderInjection }
+            };
+
             JObject options = new JObject
             {
                 { nameof(SamplingSettings), sampling },
                 { nameof(SnapshotConfiguration), snapshot },
-                { nameof(EnableW3CDistributedTracing), EnableW3CDistributedTracing},
-                { nameof(EnableResponseHeaderInjection), EnableResponseHeaderInjection}
+                { nameof(HttpAutoCollectionOptions), httpOptions},
             };
 
             return options.ToString(Formatting.Indented);
