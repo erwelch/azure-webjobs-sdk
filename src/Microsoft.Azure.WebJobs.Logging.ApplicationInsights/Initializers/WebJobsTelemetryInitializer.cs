@@ -169,33 +169,31 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
         /// Tries to apply well-known properties from a KeyValuePair onto the RequestTelemetry.
         /// </summary>
         /// <param name="request">The request.</param>
-        /// <param name="property">The property.</param>
-        /// <returns>True if the property was applied. Otherwise, false.</returns>
-        private bool TryApplyProperty(RequestTelemetry request, KeyValuePair<string, string> property)
+        /// <param name="activityTag">Tag on the request activity.</param>
+        /// <returns>True if the tag was applied. Otherwise, false.</returns>
+        private bool TryApplyProperty(RequestTelemetry request, KeyValuePair<string, string> activityTag)
         {
             bool wasPropertySet = false;
 
-            if (property.Key == LogConstants.NameKey)
+            if (activityTag.Key == LogConstants.NameKey)
             {
-                request.Context.Operation.Name = property.Value;
-                request.Name = property.Value;
+                request.Context.Operation.Name = activityTag.Value;
+                request.Name = activityTag.Value;
 
                 wasPropertySet = true;
             }
-            else if (property.Key == LogConstants.SucceededKey &&
-                bool.TryParse(property.Value, out bool success))
+            else if (activityTag.Key == LogConstants.SucceededKey &&
+                bool.TryParse(activityTag.Value, out bool success))
             {
                 // no matter what App Insights says about the response, we always
                 // want to use the function's result for Succeeded
                 request.Success = success;
                 wasPropertySet = true;
-
-                // Remove the Succeeded property as it's duplicated
-                request.Properties.Remove(LogConstants.SucceededKey);
             }
-            else if (property.Key == LoggingConstants.ClientIpKey)
+            else if (activityTag.Key == LoggingConstants.ClientIpKey)
             {
-                request.Context.Location.Ip = property.Value;
+                request.Context.Location.Ip = activityTag.Value;
+                wasPropertySet = true;
             }
 
             return wasPropertySet;

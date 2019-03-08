@@ -80,6 +80,8 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
             Assert.Equal(statusCode, request.ResponseCode);
 
             Assert.DoesNotContain(request.Properties, p => p.Key == LogConstants.SucceededKey);
+            Assert.DoesNotContain("ClientIp", request.Properties.Keys);
+            Assert.DoesNotContain("MS_HttpRequest", request.Properties.Keys);
         }
     }
 }

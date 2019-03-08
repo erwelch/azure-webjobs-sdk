@@ -432,7 +432,6 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                     null,
                     success);
 
-                Assert.DoesNotContain("MS_HttpRequest", functionRequest.Properties.Keys);
                 // Make sure operation ids match
                 var traces = _channel.Telemetries.OfType<TraceTelemetry>()
                     .Where(t => t.Context.Operation.Id == functionRequest.Context.Operation.Id);
