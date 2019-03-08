@@ -96,7 +96,7 @@ namespace Microsoft.Extensions.DependencyInjection
                     };
                 }
 
-                return new NullTelemetryModule<RequestTrackingTelemetryModule>();
+                return NullTelemetryModule.Instance;
             });
 
             services.AddSingleton<ITelemetryModule, AppServicesHeartbeatTelemetryModule>();
