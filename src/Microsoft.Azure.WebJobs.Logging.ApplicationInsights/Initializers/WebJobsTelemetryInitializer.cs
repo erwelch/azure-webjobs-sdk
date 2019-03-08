@@ -189,6 +189,12 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 // want to use the function's result for Succeeded
                 request.Success = success;
                 wasPropertySet = true;
+
+                // Remove the Succeeded property if set
+                if (request.Properties.ContainsKey(LogConstants.SucceededKey))
+                {
+                    request.Properties.Remove(LogConstants.SucceededKey);
+                }
             }
             else if (activityTag.Key == LoggingConstants.ClientIpKey)
             {

@@ -487,7 +487,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
                 }
             }
 
-            return httpRequest.HttpContext?.Connection.RemoteIpAddress.ToString() ?? LoggingConstants.ZeroIpAddress;
+            return httpRequest.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? LoggingConstants.ZeroIpAddress;
         }
 
         private static string RemovePort(string address)

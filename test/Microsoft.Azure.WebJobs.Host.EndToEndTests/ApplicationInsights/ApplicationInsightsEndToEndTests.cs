@@ -354,7 +354,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
                 RequestTelemetry outerRequest = null;
 
                 // simulate auto tracked HTTP incoming call
-                using (IOperationHolder<RequestTelemetry> operation = telemetryClient.StartOperation<RequestTelemetry>("request name"))
+                using (IOperationHolder<RequestTelemetry> operation = telemetryClient.StartOperation<RequestTelemetry>("GET /api/func-name"))
                 {
                     outerRequest = operation.Telemetry;
                     outerRequest.Url = new Uri("http://my-func/api/func-name?name=123");
@@ -890,6 +890,18 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
             Assert.Equal(operationName, telemetry.Context.Operation.Name);
             Assert.NotNull(telemetry.Duration);
             Assert.Equal(success, telemetry.Success);
+
+            if (httpMethod != null)
+            {
+                Assert.True(telemetry.Properties.TryGetValue("HttpMethod", out var actualMethod));
+                Assert.Equal(httpMethod, actualMethod);
+            }
+
+            if (requestPath != null)
+            {
+                Assert.True(telemetry.Properties.TryGetValue("HttpPath", out var actualPath));
+                Assert.Equal(requestPath, actualPath);
+            }
 
             Assert.NotNull(telemetry.Properties[LogConstants.InvocationIdKey]);
 
