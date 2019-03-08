@@ -82,7 +82,7 @@ namespace Microsoft.Azure.WebJobs.Logging.ApplicationInsights
 
             JObject httpOptions = new JObject
             {
-                { nameof(HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation), HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation },
+                { nameof(HttpAutoCollectionOptions.EnableHttpTriggerExtendedInfoCollection), HttpAutoCollectionOptions.EnableHttpTriggerExtendedInfoCollection },
                 { nameof(HttpAutoCollectionOptions.EnableW3CDistributedTracing), HttpAutoCollectionOptions.EnableW3CDistributedTracing },
                 { nameof(HttpAutoCollectionOptions.EnableResponseHeaderInjection), HttpAutoCollectionOptions.EnableResponseHeaderInjection }
             };

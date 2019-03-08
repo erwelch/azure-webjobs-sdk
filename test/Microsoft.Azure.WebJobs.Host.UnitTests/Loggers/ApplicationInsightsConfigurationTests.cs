@@ -82,12 +82,9 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
 
                 Assert.Single(modules.OfType<QuickPulseTelemetryModule>());
                 Assert.Single(modules.OfType<AppServicesHeartbeatTelemetryModule>());
-                Assert.Empty(modules.OfType<RequestTrackingTelemetryModule>());
+                Assert.Single(modules.OfType<RequestTrackingTelemetryModule>());
 
                 var dependencyModule = modules.OfType<DependencyTrackingTelemetryModule>().Single();
-                var requestModules = modules.OfType<RequestTrackingTelemetryModule>();
-                Assert.Empty(requestModules);
-
                 Assert.True(dependencyModule.EnableW3CHeadersInjection);
 
                 Assert.Same(config.TelemetryChannel, host.Services.GetServices<ITelemetryChannel>().Single());
@@ -151,7 +148,6 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                     b.AddApplicationInsights(o =>
                     {
                         o.InstrumentationKey = "some key";
-                        o.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation = true;
                     });
                 })
                 .Build())
@@ -176,7 +172,6 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                     b.AddApplicationInsights(o =>
                     {
                         o.InstrumentationKey = "some key";
-                        o.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation = true;
                         o.HttpAutoCollectionOptions.EnableW3CDistributedTracing = false;
                         o.HttpAutoCollectionOptions.EnableResponseHeaderInjection = false;
                     });
@@ -195,7 +190,7 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
         }
 
         [Fact]
-        public void DependencyInjectionConfiguration_ConfiguresDefaultRequestCollectionOptions()
+        public void DependencyInjectionConfiguration_DisableHttpRequestCollectionOptions()
         {
             using (var host = new HostBuilder()
                 .ConfigureLogging(b =>
@@ -203,6 +198,8 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                     b.AddApplicationInsights(o =>
                     {
                         o.InstrumentationKey = "some key";
+                        o.HttpAutoCollectionOptions.EnableHttpTriggerExtendedInfoCollection = false;
+                        o.HttpAutoCollectionOptions.EnableW3CDistributedTracing = false;
                     });
                 })
                 .Build())
@@ -211,7 +208,7 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 var dependencyModule = modules.OfType<DependencyTrackingTelemetryModule>().Single();
                 var requestModules = modules.OfType<RequestTrackingTelemetryModule>();
 
-                Assert.True(dependencyModule.EnableW3CHeadersInjection);
+                Assert.False(dependencyModule.EnableW3CHeadersInjection);
                 Assert.Empty(requestModules);
             }
         }

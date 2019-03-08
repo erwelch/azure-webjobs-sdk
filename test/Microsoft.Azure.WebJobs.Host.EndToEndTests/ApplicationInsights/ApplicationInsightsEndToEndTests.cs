@@ -50,7 +50,6 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
 
         private const string _dateFormat = "HH':'mm':'ss'.'fffZ";
         private const int _expectedResponseCode = 204;
-        private static readonly Uri _expectedUrl = new Uri("http://localhost/some/path");
 
         private readonly CustomTestWebHostFactory _factory;
 
@@ -386,8 +385,12 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
         public async Task ApplicationInsights_HttpRequestTrackingByWebJobs(string testName, bool success)
         {
             var client = _factory.CreateClient();
+            var httpOptions = new HttpAutoCollectionOptions
+            {
+                EnableHttpTriggerExtendedInfoCollection = false
+            };
 
-            using (IHost host = ConfigureHost())
+            using (IHost host = ConfigureHost(httpOptions: httpOptions))
             {
                 Startup.Host = host;
                 await host.StartAsync();
@@ -446,12 +449,7 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
         {
             var client = _factory.CreateClient();
 
-            var httpOptions = new HttpAutoCollectionOptions
-            {
-                CollectExtendedHttpTriggerInformation = true
-            };
-
-            using (IHost host = ConfigureHost(httpOptions: httpOptions))
+            using (IHost host = ConfigureHost())
             {
                 Startup.Host = host;
                 await host.StartAsync();
@@ -516,15 +514,10 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests
 
             var client = _factory.CreateClient();
 
-            var httpOptions = new HttpAutoCollectionOptions
-            {
-                CollectExtendedHttpTriggerInformation = true
-            };
-
             // Create two hosts to simulate.
-            using (IHost host1 = ConfigureHost(httpOptions: httpOptions))
+            using (IHost host1 = ConfigureHost())
             {
-                using (IHost host2 = ConfigureHost(httpOptions: httpOptions))
+                using (IHost host2 = ConfigureHost())
                 {
                     Startup.Host = host2;
                     await host1.StartAsync();

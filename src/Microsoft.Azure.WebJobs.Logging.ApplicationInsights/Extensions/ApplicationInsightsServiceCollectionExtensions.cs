@@ -81,7 +81,7 @@ namespace Microsoft.Extensions.DependencyInjection
             services.AddSingleton<ITelemetryModule>(provider =>
             {
                 var options = provider.GetService<IOptions<ApplicationInsightsLoggerOptions>>().Value;
-                if (options.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation)
+                if (options.HttpAutoCollectionOptions.EnableHttpTriggerExtendedInfoCollection)
                 {
                     var appIdProvider = provider.GetService<IApplicationIdProvider>();
 

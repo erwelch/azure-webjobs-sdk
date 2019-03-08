@@ -45,7 +45,6 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
         private readonly string defaultIp = "0.0.0.0";
         private readonly TelemetryClient _client;
         private readonly int _durationMs = 450;
-        private readonly IFunctionInstance _functionInstance;
         private readonly IHost _host;
 
         public ApplicationInsightsLoggerTests()
@@ -78,8 +77,6 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 FullName = _functionFullName,
                 ShortName = _functionShortName
             };
-
-            _functionInstance = new FunctionInstance(_invocationId, new Dictionary<string, string>(), null, ExecutionReason.AutomaticTrigger, null, null, descriptor);
         }
 
         [Fact]
@@ -682,13 +679,13 @@ namespace Microsoft.Azure.WebJobs.Host.UnitTests.Loggers
                 {
                     EnableResponseHeaderInjection = false,
                     EnableW3CDistributedTracing = false,
-                    CollectExtendedHttpTriggerInformation = true
+                    EnableHttpTriggerExtendedInfoCollection = true
                 }
             };
 
             var deserializedOptions = JsonConvert.DeserializeObject<ApplicationInsightsLoggerOptions>(options.Format());
 
-            Assert.Equal(options.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation, deserializedOptions.HttpAutoCollectionOptions.CollectExtendedHttpTriggerInformation);
+            Assert.Equal(options.HttpAutoCollectionOptions.EnableHttpTriggerExtendedInfoCollection, deserializedOptions.HttpAutoCollectionOptions.EnableHttpTriggerExtendedInfoCollection);
             Assert.Equal(options.HttpAutoCollectionOptions.EnableW3CDistributedTracing, deserializedOptions.HttpAutoCollectionOptions.EnableW3CDistributedTracing);
             Assert.Equal(options.HttpAutoCollectionOptions.EnableResponseHeaderInjection, deserializedOptions.HttpAutoCollectionOptions.EnableResponseHeaderInjection);
 
