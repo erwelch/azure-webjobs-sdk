@@ -58,18 +58,11 @@ namespace Microsoft.Azure.WebJobs.Host.EndToEndTests.ApplicationInsights
 
         [NoAutomaticTrigger]
         public static void QueueOut(
-            [Queue(TriggerQueueNamePattern)] out CloudQueueMessage message, ILogger logger)
+            [Queue(TriggerQueueNamePattern)] out MyObject message, ILogger logger)
         {
-            var dependency = new DependencyTelemetry("Azure queue", _triggerQueue.StorageUri.PrimaryUri.AbsoluteUri, "Enqueue " + _triggerQueueName, null);
-            using (client.StartOperation(dependency))
-            {
-                Activity.Current.UpdateContextOnActivity();
-                string messageJson = "{\"msg\":\"123\", \"$AzureWebJobsTraceparent\":\"" +
-                                     Activity.Current.GetTraceparent() + "\"}";
-
-                message = new CloudQueueMessage(messageJson);
-            }
+            message = new MyObject{msg = "123"};
         }
+
         public async Task QueueTrigger(
             [QueueTrigger(TriggerQueueNamePattern)] MyObject input)
         {

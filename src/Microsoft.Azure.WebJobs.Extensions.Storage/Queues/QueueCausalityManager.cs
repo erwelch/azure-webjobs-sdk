@@ -59,7 +59,6 @@ namespace Microsoft.Azure.WebJobs.Host.Queues
             }
         }
 
-        [DebuggerNonUserCode]
         public static (string traceparent, string tracestate) GetTraceContext(CloudQueueMessage msg)
         {
             string text = msg.TryGetAsString();
